@@ -1,0 +1,31 @@
+import { requireRepresentante } from '@/lib/auth';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Header } from '@/components/layout/Header';
+import { LogoutButton } from '@/components/layout/LogoutButton';
+import { IconChart, IconClipboard, IconBox, IconUsers } from '@/components/ui/Icons';
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { representante } = await requireRepresentante('admin');
+
+  const links = [
+    { href: '/admin', label: 'Visão Geral', icon: <IconChart /> },
+    { href: '/admin/pedidos', label: 'Pedidos', icon: <IconClipboard /> },
+    { href: '/admin/produtos', label: 'Produtos', icon: <IconBox /> },
+    { href: '/admin/representantes', label: 'Representantes', icon: <IconUsers /> },
+  ];
+
+  return (
+    <div className="flex min-h-screen bg-surface">
+      <Sidebar
+        links={links}
+        nome={representante.nome}
+        subtitulo="Administrador"
+        footer={<LogoutButton />}
+      />
+      <div className="flex min-h-screen flex-1 flex-col">
+        <Header />
+        <main className="mx-auto w-full max-w-content flex-1 px-8 py-8">{children}</main>
+      </div>
+    </div>
+  );
+}
