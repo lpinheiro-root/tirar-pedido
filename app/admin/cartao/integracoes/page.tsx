@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { requireRepresentante } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
@@ -14,6 +15,8 @@ export default async function IntegracoesPage({
 }) {
   await requireRepresentante('admin');
   const configurado = mercadoLivreConfigurado();
+  const host = headers().get('x-forwarded-host') ?? headers().get('host');
+  const urlCallback = `https://${host}/api/cartao/mercadolivre/callback`;
 
   // tokens ficam só no servidor: seleciona apenas os campos exibidos
   const { data } = await createServiceRoleClient()
@@ -63,14 +66,11 @@ export default async function IntegracoesPage({
                 </li>
                 <li>
                   Em &quot;URI de redirect&quot;, cadastre{' '}
-                  <code className="rounded bg-surface-container px-1">
-                    https://SEU-DOMINIO/api/cartao/mercadolivre/callback
-                  </code>
-                  .
+                  <code className="select-all rounded bg-surface-container px-1">{urlCallback}</code>
                 </li>
                 <li>
-                  Preencha <code>ML_CLIENT_ID</code>, <code>ML_CLIENT_SECRET</code> e <code>ML_REDIRECT_URI</code> no{' '}
-                  <code>.env.local</code> e reinicie o servidor.
+                  Na Netlify (Variáveis ambientais), crie <code>ML_CLIENT_ID</code>, <code>ML_CLIENT_SECRET</code> e{' '}
+                  <code>ML_REDIRECT_URI</code> (com o endereço acima) e faça um novo deploy.
                 </li>
               </ol>
             </div>
