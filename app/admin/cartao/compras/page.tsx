@@ -19,13 +19,24 @@ interface CompraLista {
   valor_total: number;
   parcelas: number;
   fonte: string;
+  usuario_id: string;
   cartao_lancamentos: { id: string; fatura_id: string }[];
 }
 
 const FONTE_LABEL: Record<string, string> = { api: 'API', importacao: 'Planilha', manual: 'Manual' };
 
+
+/** Para o super admin: nome de quem é dono de cada registro. */
+async function nomesDosDonos(supabase: ReturnType<typeof createClient>, ids: string[]) {
+  const nomes = new Map<string, string>();
+  if (!ids.length) return nomes;
+  const { data } = await supabase.from('representantes').select('id, nome').in('id', Array.from(new Set(ids)));
+  for (const u of data ?? []) nomes.set(u.id, u.nome);
+  return nomes;
+}
+
 export default async function ComprasPage({ searchParams }: { searchParams: { origem?: string } }) {
-  await requireRepresentante('admin');
+  const { representante } = await requireRepresentante('admin');
   const supabase = createClient();
   const origem = searchParams.origem ?? 'todas';
 
@@ -37,6 +48,9 @@ export default async function ComprasPage({ searchParams }: { searchParams: { or
   if (origem !== 'todas') query = query.eq('origem', origem);
   const { data } = await query;
   const compras = (data ?? []) as CompraLista[];
+  const donos = representante.super_admin
+    ? await nomesDosDonos(supabase, compras.map((c) => c.usuario_id))
+    : null;
 
   return (
     <div>
@@ -107,6 +121,9 @@ export default async function ComprasPage({ searchParams }: { searchParams: { or
                         {FONTE_LABEL[c.fonte]}
                         {c.conta ? ` · ${c.conta}` : ''}
                       </p>
+                      {donos && (
+                        <p className="text-label text-on-surface-variant">{donos.get(c.usuario_id) ?? '—'}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <p className="max-w-md truncate text-body text-on-surface" title={c.descricao ?? ''}>

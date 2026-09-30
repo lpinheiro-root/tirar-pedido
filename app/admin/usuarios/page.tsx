@@ -1,4 +1,4 @@
-import { requireRepresentante } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -7,7 +7,7 @@ import { NovoUsuarioForm } from './NovoUsuarioForm';
 import { UsuarioRow } from './UsuarioRow';
 
 export default async function UsuariosPage() {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireSuperAdmin();
   const supabase = createClient();
   const { data } = await supabase
     .from('representantes')

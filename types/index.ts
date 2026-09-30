@@ -44,6 +44,8 @@ export interface Representante {
   codigo_representante_sql: string;
   role: Role;
   ativo: boolean;
+  /** Natuhair Cartão: vê os dados de todos e gerencia usuários */
+  super_admin?: boolean;
   criado_em: string;
 }
 

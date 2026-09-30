@@ -49,8 +49,19 @@ function lancamentoConciliavel(l: Record<string, unknown>) {
   };
 }
 
-/** Concilia automaticamente os lançamentos de compra ainda pendentes de uma fatura. */
+/**
+ * Concilia automaticamente os lançamentos de compra ainda pendentes de uma fatura,
+ * só contra as compras do dono da fatura (o super admin enxerga tudo, mas não
+ * pode misturar compras de um usuário com a fatura de outro).
+ */
 async function conciliarFatura(supabase: Supabase, faturaId: string): Promise<number> {
+  const { data: fatura } = await supabase
+    .from('cartao_faturas')
+    .select('criado_por')
+    .eq('id', faturaId)
+    .maybeSingle();
+  if (!fatura?.criado_por) return 0;
+
   const { data: pendentes } = await supabase
     .from('cartao_lancamentos')
     .select('*')
@@ -65,6 +76,7 @@ async function conciliarFatura(supabase: Supabase, faturaId: string): Promise<nu
   const { data: compras } = await supabase
     .from('cartao_compras')
     .select('*')
+    .eq('usuario_id', fatura.criado_por)
     .gte('data', somarDias(datas[0], -Math.ceil(maiorParcela * 31) - 10))
     .lte('data', somarDias(datas[datas.length - 1], 3));
   if (!compras?.length) return 0;
@@ -125,6 +137,7 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
     .from('cartao_faturas')
     .select('id')
     .eq('arquivo_hash', hash)
+    .eq('criado_por', userId)
     .maybeSingle();
   if (existente) redirect(`/admin/cartao/${existente.id}`);
 
@@ -208,10 +221,12 @@ export async function vincularManual(formData: FormData) {
 
   const supabase = createClient();
   const [{ data: lanc }, { data: compra }] = await Promise.all([
-    supabase.from('cartao_lancamentos').select('*').eq('id', lancamentoId).single(),
+    supabase.from('cartao_lancamentos').select('*, cartao_faturas(criado_por)').eq('id', lancamentoId).single(),
     supabase.from('cartao_compras').select('*').eq('id', compraId).single(),
   ]);
   if (!lanc || !compra) return;
+  const dono = (lanc.cartao_faturas as { criado_por: string } | null)?.criado_por;
+  if (compra.usuario_id !== dono) return;
 
   const c = compraConciliavel(compra);
   const parcelas = c.parcelas > 1 ? c.parcelas : (lanc.parcela_total as number | null) ?? 1;
@@ -259,7 +274,7 @@ export async function marcarResolvido(formData: FormData) {
 // ─────────────────────────────────────────────────────────────
 
 export async function importarCompras(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  await requireRepresentante('admin');
+  const { userId } = await requireRepresentante('admin');
   const arquivo = formData.get('arquivo');
   const origemPadrao = String(formData.get('origem') ?? 'outro');
   if (!(arquivo instanceof File) || arquivo.size === 0) return { erro: 'Selecione a planilha.' };
@@ -275,12 +290,13 @@ export async function importarCompras(_prev: FormResultado | undefined, formData
   }
 
   const supabase = createClient();
-  const comPedido = resultado.compras.filter((c) => c.pedido_externo);
-  const semPedido = resultado.compras.filter((c) => !c.pedido_externo);
+  const compras = resultado.compras.map((c) => ({ ...c, usuario_id: userId }));
+  const comPedido = compras.filter((c) => c.pedido_externo);
+  const semPedido = compras.filter((c) => !c.pedido_externo);
   if (comPedido.length) {
     const { error } = await supabase
       .from('cartao_compras')
-      .upsert(comPedido, { onConflict: 'origem,pedido_externo' });
+      .upsert(comPedido, { onConflict: 'usuario_id,origem,pedido_externo' });
     if (error) return { erro: error.message };
   }
   if (semPedido.length) {
@@ -297,13 +313,14 @@ export async function importarCompras(_prev: FormResultado | undefined, formData
 }
 
 export async function novaCompra(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  await requireRepresentante('admin');
+  const { userId } = await requireRepresentante('admin');
   const valor = Number(String(formData.get('valor') ?? '').replace(/\./g, '').replace(',', '.'));
   const data = String(formData.get('data') ?? '');
   if (!data || !Number.isFinite(valor) || valor <= 0) return { erro: 'Informe data e valor.' };
 
   const supabase = createClient();
   const { error } = await supabase.from('cartao_compras').insert({
+    usuario_id: userId,
     origem: String(formData.get('origem') ?? 'outro'),
     pedido_externo: String(formData.get('pedido') ?? '').trim() || null,
     data,
@@ -342,27 +359,30 @@ export async function sincronizarMercadoLivre(
   _prev: FormResultado | undefined,
   formData: FormData
 ): Promise<FormResultado> {
-  await requireRepresentante('admin');
+  const { userId, representante } = await requireRepresentante('admin');
   const dias = Math.min(730, Math.max(7, Number(formData.get('dias') || 120)));
   const desde = somarDias(new Date().toISOString().slice(0, 10), -dias);
 
+  // tokens só no servidor: a tabela não tem policies, então o filtro de dono é aqui
   const service = createServiceRoleClient();
-  const { data: contas } = await service
-    .from('cartao_integracoes')
-    .select('*')
-    .eq('provedor', 'mercadolivre');
+  let consulta = service.from('cartao_integracoes').select('*').eq('provedor', 'mercadolivre');
+  if (!representante.super_admin) consulta = consulta.eq('usuario_id', userId);
+  const { data: contas } = await consulta;
   if (!contas?.length) return { erro: 'Nenhuma conta do Mercado Livre conectada.' };
 
   const supabase = createClient();
   let total = 0;
   const falhas: string[] = [];
-  for (const conta of contas as IntegracaoML[]) {
+  for (const conta of contas as (IntegracaoML & { usuario_id: string })[]) {
     try {
-      const compras = (await buscarCompras(conta, desde)).filter((c) => c.valor_total > 0 && c.data);
+      const compras = (await buscarCompras(conta, desde))
+        .filter((c) => c.valor_total > 0 && c.data)
+        .map((c) => ({ ...c, usuario_id: conta.usuario_id }));
       if (compras.length) {
-        const { error } = await supabase
+        // service role: o super admin pode sincronizar a conta de outro usuário
+        const { error } = await service
           .from('cartao_compras')
-          .upsert(compras, { onConflict: 'origem,pedido_externo' });
+          .upsert(compras, { onConflict: 'usuario_id,origem,pedido_externo' });
         if (error) throw new Error(error.message);
       }
       await service
@@ -382,7 +402,9 @@ export async function sincronizarMercadoLivre(
 }
 
 export async function desconectarMercadoLivre(formData: FormData) {
-  await requireRepresentante('admin');
-  await createServiceRoleClient().from('cartao_integracoes').delete().eq('id', String(formData.get('id')));
+  const { userId, representante } = await requireRepresentante('admin');
+  let exclusao = createServiceRoleClient().from('cartao_integracoes').delete().eq('id', String(formData.get('id')));
+  if (!representante.super_admin) exclusao = exclusao.eq('usuario_id', userId);
+  await exclusao;
   revalidarCartao();
 }

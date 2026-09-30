@@ -116,6 +116,7 @@ export default async function FaturaPage({
     const { data: periodo } = await supabase
       .from('cartao_compras')
       .select('*')
+      .eq('usuario_id', fatura.criado_por)
       .gte('data', inicio)
       .lte('data', fim)
       .limit(2000);

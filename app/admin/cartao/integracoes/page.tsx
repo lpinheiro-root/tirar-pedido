@@ -13,24 +13,37 @@ export default async function IntegracoesPage({
 }: {
   searchParams: { conectado?: string; erro?: string };
 }) {
-  await requireRepresentante('admin');
+  const { userId, representante } = await requireRepresentante('admin');
   const configurado = mercadoLivreConfigurado();
   const host = headers().get('x-forwarded-host') ?? headers().get('host');
   const urlCallback = `https://${host}/api/cartao/mercadolivre/callback`;
 
-  // tokens ficam só no servidor: seleciona apenas os campos exibidos
-  const { data } = await createServiceRoleClient()
+  // tokens ficam só no servidor: seleciona apenas os campos exibidos.
+  // Cada usuário vê as próprias contas; o super admin vê todas, com o dono.
+  const service = createServiceRoleClient();
+  let consulta = service
     .from('cartao_integracoes')
-    .select('id, apelido, ultima_sincronizacao, criado_em')
+    .select('id, apelido, usuario_id, ultima_sincronizacao, criado_em')
     .eq('provedor', 'mercadolivre')
     .order('criado_em');
+  if (!representante.super_admin) consulta = consulta.eq('usuario_id', userId);
+  const { data } = await consulta;
   const contas = data ?? [];
+
+  const donos = new Map<string, string>();
+  if (representante.super_admin && contas.length) {
+    const { data: usuarios } = await service
+      .from('representantes')
+      .select('id, nome')
+      .in('id', Array.from(new Set(contas.map((c) => c.usuario_id))));
+    for (const u of usuarios ?? []) donos.set(u.id, u.nome);
+  }
 
   return (
     <div>
       <PageHeading
         title="Integrações"
-        subtitle="Contas da empresa conectadas por autorização oficial (OAuth) — nenhuma senha é guardada."
+        subtitle="Suas contas de compra, conectadas por autorização oficial (OAuth) — nenhuma senha é guardada."
       />
 
       {searchParams.conectado && (
@@ -87,7 +100,14 @@ export default async function IntegracoesPage({
                 <tbody>
                   {contas.map((c) => (
                     <tr key={c.id} className="border-t border-border-muted">
-                      <td className="py-3 text-body font-medium text-on-surface">{c.apelido}</td>
+                      <td className="py-3">
+                        <p className="text-body font-medium text-on-surface">{c.apelido}</p>
+                        {representante.super_admin && (
+                          <p className="text-label text-on-surface-variant">
+                            Usuário: {c.usuario_id === userId ? 'você' : donos.get(c.usuario_id) ?? '—'}
+                          </p>
+                        )}
+                      </td>
                       <td className="py-3 text-body-sm text-on-surface-variant">
                         {c.ultima_sincronizacao ? formatDateTime(c.ultima_sincronizacao) : 'Nunca'}
                       </td>
@@ -104,8 +124,8 @@ export default async function IntegracoesPage({
                   {contas.length === 0 && (
                     <tr>
                       <td colSpan={3} className="py-4 text-body-sm text-on-surface-variant">
-                        Nenhuma conta conectada. Clique em &quot;Conectar conta&quot; logado na conta da empresa no
-                        Mercado Livre.
+                        Nenhuma conta conectada. Entre no Mercado Livre com a conta que você usa para comprar e
+                        clique em &quot;Conectar conta&quot;.
                       </td>
                     </tr>
                   )}

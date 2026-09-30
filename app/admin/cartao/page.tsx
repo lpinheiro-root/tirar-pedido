@@ -14,18 +14,32 @@ interface FaturaLista {
   arquivo_nome: string;
   vencimento: string | null;
   total: number | null;
+  criado_por: string | null;
   cartao_lancamentos: { status: string; tipo: string }[];
 }
 
+
+/** Para o super admin: nome de quem é dono de cada registro. */
+async function nomesDosDonos(supabase: ReturnType<typeof createClient>, ids: string[]) {
+  const nomes = new Map<string, string>();
+  if (!ids.length) return nomes;
+  const { data } = await supabase.from('representantes').select('id, nome').in('id', Array.from(new Set(ids)));
+  for (const u of data ?? []) nomes.set(u.id, u.nome);
+  return nomes;
+}
+
 export default async function CartaoFaturasPage() {
-  await requireRepresentante('admin');
+  const { representante } = await requireRepresentante('admin');
   const supabase = createClient();
   const { data } = await supabase
     .from('cartao_faturas')
-    .select('id, banco, arquivo_nome, vencimento, total, cartao_lancamentos(status, tipo)')
+    .select('id, banco, arquivo_nome, vencimento, total, criado_por, cartao_lancamentos(status, tipo)')
     .order('vencimento', { ascending: false, nullsFirst: false })
     .limit(100);
   const faturas = (data ?? []) as FaturaLista[];
+  const donos = representante.super_admin
+    ? await nomesDosDonos(supabase, faturas.map((f) => f.criado_por).filter(Boolean) as string[])
+    : null;
 
   return (
     <div>
@@ -72,6 +86,9 @@ export default async function CartaoFaturasPage() {
                     <td className="px-4 py-3">
                       <p className="text-body font-medium text-on-surface">{BANCO_LABEL[f.banco] ?? f.banco}</p>
                       <p className="max-w-64 truncate text-body-sm text-on-surface-variant">{f.arquivo_nome}</p>
+                      {donos && f.criado_por && (
+                        <p className="text-label text-on-surface-variant">Enviada por {donos.get(f.criado_por) ?? '—'}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-body-sm text-on-surface-variant">
                       {f.vencimento ? formatDate(`${f.vencimento}T12:00:00`) : '—'}

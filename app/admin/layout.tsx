@@ -10,7 +10,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Nesta versão (Natuhair Cartão) o painel admin expõe só o módulo Cartão.
   const links = [
     { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
-    { href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> },
+    ...(representante.super_admin
+      ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }]
+      : []),
   ];
 
   return (
@@ -19,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         links={links}
         titulo="Natuhair Cartão"
         nome={representante.nome}
-        subtitulo="Administrador"
+        subtitulo={representante.super_admin ? 'Administrador' : 'Usuário'}
         footer={<SidebarFooter contaHref="/admin/conta" />}
       />
       <div className="flex min-h-screen flex-1 flex-col">

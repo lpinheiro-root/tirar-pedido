@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { requireRepresentante } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/auth';
 
 const SENHA_MINIMA = 8;
 
@@ -13,14 +13,15 @@ export interface UsuarioFormState {
 
 /**
  * Cria um usuário do Natuhair Cartão com a senha escolhida pelo admin.
- * Todo usuário do Cartão é admin (o módulo é restrito a admins); estado e
+ * Todo usuário do Cartão tem role admin (o módulo é restrito a admins), mas só
+ * vê os próprios dados; o super admin é marcado direto no banco. Estado e
  * código SQL são campos do sistema de pedidos e ficam com valores fixos.
  */
 export async function criarUsuario(
   _prev: UsuarioFormState | undefined,
   formData: FormData
 ): Promise<UsuarioFormState> {
-  await requireRepresentante('admin');
+  await requireSuperAdmin();
 
   const nome = String(formData.get('nome') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
@@ -57,7 +58,7 @@ export async function criarUsuario(
 }
 
 export async function definirSenhaUsuario(id: string, senha: string): Promise<{ ok?: boolean; erro?: string }> {
-  await requireRepresentante('admin');
+  await requireSuperAdmin();
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
 
   const { error } = await createServiceRoleClient().auth.admin.updateUserById(id, { password: senha });
@@ -65,7 +66,7 @@ export async function definirSenhaUsuario(id: string, senha: string): Promise<{ 
 }
 
 export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<{ erro?: string }> {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireSuperAdmin();
   if (id === userId && !ativo) return { erro: 'Você não pode desativar o próprio usuário.' };
 
   await createServiceRoleClient().from('representantes').update({ ativo }).eq('id', id);

@@ -107,8 +107,8 @@ async function apiGet<T>(caminho: string, token: string): Promise<T> {
   return res.json();
 }
 
-/** Troca o `code` do callback OAuth por tokens e grava/atualiza a conta. */
-export async function conectarConta(code: string): Promise<string> {
+/** Troca o `code` do callback OAuth por tokens e grava/atualiza a conta do usuário. */
+export async function conectarConta(code: string, usuarioId: string): Promise<string> {
   const { clientId, clientSecret, redirectUri } = config();
   const token = await pedirToken({
     grant_type: 'authorization_code',
@@ -122,6 +122,7 @@ export async function conectarConta(code: string): Promise<string> {
   const supabase = createServiceRoleClient();
   const { error } = await supabase.from('cartao_integracoes').upsert(
     {
+      usuario_id: usuarioId,
       provedor: 'mercadolivre',
       usuario_externo_id: String(token.user_id),
       apelido: usuario.nickname,
@@ -129,7 +130,7 @@ export async function conectarConta(code: string): Promise<string> {
       refresh_token: token.refresh_token,
       expira_em: new Date(Date.now() + token.expires_in * 1000).toISOString(),
     },
-    { onConflict: 'provedor,usuario_externo_id' }
+    { onConflict: 'usuario_id,provedor,usuario_externo_id' }
   );
   if (error) throw new Error(error.message);
   return usuario.nickname;

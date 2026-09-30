@@ -5,7 +5,7 @@ import { conectarConta } from '@/lib/cartao/mercadolivre';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  await requireRepresentante('admin');
+  const { userId } = await requireRepresentante('admin');
   const destino = new URL('/admin/cartao/integracoes', request.url);
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     destino.searchParams.set('erro', 'Autorização inválida ou expirada. Tente conectar novamente.');
   } else {
     try {
-      destino.searchParams.set('conectado', await conectarConta(code));
+      destino.searchParams.set('conectado', await conectarConta(code, userId));
     } catch (e) {
       destino.searchParams.set('erro', (e as Error).message);
     }
