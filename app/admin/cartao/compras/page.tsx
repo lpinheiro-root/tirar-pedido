@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { formatCurrency } from '@/lib/format';
+import { IconDownload } from '@/components/ui/Icons';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 import { excluirCompra } from '../actions';
 import { ImportarComprasForm, NovaCompraForm } from './ComprasForms';
@@ -78,20 +79,28 @@ export default async function ComprasPage({ searchParams }: { searchParams: { or
         </Card>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {['todas', ...Object.keys(ORIGEM_LABEL)].map((o) => (
-          <Link
-            key={o}
-            href={o === 'todas' ? '/admin/cartao/compras' : `/admin/cartao/compras?origem=${o}`}
-            className={`rounded-full px-3 py-1.5 text-body-sm font-medium ${
-              origem === o
-                ? 'bg-primary text-on-primary'
-                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
-            }`}
-          >
-            {o === 'todas' ? 'Todas' : ORIGEM_LABEL[o]}
-          </Link>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {['todas', ...Object.keys(ORIGEM_LABEL)].map((o) => (
+            <Link
+              key={o}
+              href={o === 'todas' ? '/admin/cartao/compras' : `/admin/cartao/compras?origem=${o}`}
+              className={`rounded-full px-3 py-1.5 text-body-sm font-medium ${
+                origem === o
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
+              }`}
+            >
+              {o === 'todas' ? 'Todas' : ORIGEM_LABEL[o]}
+            </Link>
+          ))}
+        </div>
+        <a
+          href={`/api/cartao/compras/exportar?origem=${origem}`}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
+        >
+          <IconDownload width={16} height={16} /> Exportar Excel
+        </a>
       </div>
 
       <Card>

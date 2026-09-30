@@ -6,6 +6,7 @@ import { PageHeading } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { IconDownload } from '@/components/ui/Icons';
 import { BANCO_LABEL, ORIGEM_LABEL, TIPO_LABEL, type StatusLancamento } from '@/lib/cartao/rotulos';
 import { StatusLancamentoBadge } from '../StatusLancamentoBadge';
 import { desvincular, excluirFatura, marcarResolvido, reconciliarFatura, vincularManual } from '../actions';
@@ -145,6 +146,12 @@ export default async function FaturaPage({
           subtitle={`${fatura.vencimento ? `Vencimento ${formatDate(`${fatura.vencimento}T12:00:00`)} · ` : ''}${fatura.arquivo_nome}`}
         />
         <div className="flex gap-2">
+          <a
+            href={`/api/cartao/faturas/${fatura.id}/exportar`}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
+          >
+            <IconDownload width={16} height={16} /> Exportar Excel
+          </a>
           <form action={reconciliarFatura}>
             <input type="hidden" name="faturaId" value={fatura.id} />
             <Button type="submit" variant="secondary" size="sm">
