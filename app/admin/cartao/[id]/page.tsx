@@ -82,7 +82,7 @@ export default async function FaturaPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { filtro?: string };
+  searchParams: { filtro?: string; nova?: string };
 }) {
   await requireRepresentante('admin');
   const supabase = createClient();
@@ -166,6 +166,24 @@ export default async function FaturaPage({
           </form>
         </div>
       </div>
+
+      {searchParams.nova && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-5 py-4">
+          <div>
+            <p className="text-body font-semibold text-green-800">Fatura lida e conciliada</p>
+            <p className="text-body-sm text-green-800">
+              {compras.length} compra(s) na fatura: {resumo[0].itens.length} conciliada(s),{' '}
+              {resumo[1].itens.length} divergente(s) e {resumo[2].itens.length} sem compra.
+            </p>
+          </div>
+          <a
+            href={`/api/cartao/faturas/${fatura.id}/exportar`}
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-button text-on-primary hover:bg-primary/90"
+          >
+            <IconDownload width={16} height={16} /> Exportar Excel
+          </a>
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Card className="p-4">

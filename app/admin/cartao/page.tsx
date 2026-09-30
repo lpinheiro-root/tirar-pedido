@@ -3,7 +3,7 @@ import { requireRepresentante } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { IconEye } from '@/components/ui/Icons';
+import { IconDownload, IconEye } from '@/components/ui/Icons';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { BANCO_LABEL } from '@/lib/cartao/rotulos';
 import { EnviarFaturaForm } from './EnviarFaturaForm';
@@ -112,7 +112,13 @@ export default async function CartaoFaturasPage() {
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <a
+                        href={`/api/cartao/faturas/${f.id}/exportar`}
+                        className="mr-4 inline-flex items-center gap-1 text-body-sm font-medium text-primary hover:underline"
+                      >
+                        <IconDownload width={16} height={16} /> Excel
+                      </a>
                       <Link
                         href={`/admin/cartao/${f.id}`}
                         className="inline-flex items-center gap-1 text-body-sm font-medium text-primary hover:underline"

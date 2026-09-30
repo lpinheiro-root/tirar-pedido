@@ -193,7 +193,7 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
 
   await conciliarFatura(supabase, nova.id);
   revalidarCartao();
-  redirect(`/admin/cartao/${nova.id}`);
+  redirect(`/admin/cartao/${nova.id}?nova=1`);
 }
 
 export async function reconciliarFatura(formData: FormData) {
