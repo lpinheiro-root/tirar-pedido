@@ -23,12 +23,16 @@ export default async function IntegracoesPage({
   const service = createServiceRoleClient();
   let consulta = service
     .from('cartao_integracoes')
-    .select('id, apelido, usuario_id, ultima_sincronizacao, criado_em')
+    .select('id, apelido, usuario_id, ultima_sincronizacao, criado_em, expira_em, refresh_token')
     .eq('provedor', 'mercadolivre')
     .order('criado_em');
   if (!representante.super_admin) consulta = consulta.eq('usuario_id', userId);
   const { data } = await consulta;
-  const contas = data ?? [];
+  // o refresh_token não vai para o browser: só vira o booleano 'expirada'
+  const contas = (data ?? []).map(({ refresh_token, ...c }) => ({
+    ...c,
+    expirada: !refresh_token && Date.parse(c.expira_em) < Date.now(),
+  }));
 
   const donos = new Map<string, string>();
   if (representante.super_admin && contas.length) {
@@ -110,8 +114,19 @@ export default async function IntegracoesPage({
                       </td>
                       <td className="py-3 text-body-sm text-on-surface-variant">
                         {c.ultima_sincronizacao ? formatDateTime(c.ultima_sincronizacao) : 'Nunca'}
+                        {c.expirada && (
+                          <p className="text-label font-medium text-error">Conexão expirada</p>
+                        )}
                       </td>
                       <td className="py-3 text-right">
+                        {c.expirada && c.usuario_id === userId && (
+                          <a
+                            href="/api/cartao/mercadolivre/conectar"
+                            className="mb-1 block text-label font-medium text-primary hover:underline"
+                          >
+                            Reconectar
+                          </a>
+                        )}
                         <form action={desconectarMercadoLivre}>
                           <input type="hidden" name="id" value={c.id} />
                           <button type="submit" className="text-label font-medium text-on-surface-variant hover:text-error">

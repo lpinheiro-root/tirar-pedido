@@ -38,7 +38,8 @@ export interface CompraML {
 
 interface TokenResponse {
   access_token: string;
-  refresh_token: string;
+  /** só vem quando o app tem o escopo offline_access habilitado */
+  refresh_token?: string;
   expires_in: number;
   user_id: number;
 }
@@ -127,7 +128,9 @@ export async function conectarConta(code: string, usuarioId: string): Promise<st
       usuario_externo_id: String(token.user_id),
       apelido: usuario.nickname,
       access_token: token.access_token,
-      refresh_token: token.refresh_token,
+      // sem offline_access o ML não manda refresh token: gravamos vazio e o
+      // usuário reconecta quando o access token (~6h) expirar
+      refresh_token: token.refresh_token ?? '',
       expira_em: new Date(Date.now() + token.expires_in * 1000).toISOString(),
     },
     { onConflict: 'usuario_id,provedor,usuario_externo_id' }
@@ -139,6 +142,9 @@ export async function conectarConta(code: string, usuarioId: string): Promise<st
 /** Access token válido, renovando se faltar menos de 5 min (o refresh token é de uso único). */
 async function tokenValido(integracao: IntegracaoML): Promise<string> {
   if (Date.parse(integracao.expira_em) - Date.now() > 5 * 60_000) return integracao.access_token;
+  if (!integracao.refresh_token) {
+    throw new Error('a conexão expirou — clique em "Reconectar" para autorizar de novo');
+  }
 
   const { clientId, clientSecret } = config();
   const token = await pedirToken({
@@ -152,7 +158,7 @@ async function tokenValido(integracao: IntegracaoML): Promise<string> {
     .from('cartao_integracoes')
     .update({
       access_token: token.access_token,
-      refresh_token: token.refresh_token,
+      refresh_token: token.refresh_token ?? '',
       expira_em: new Date(Date.now() + token.expires_in * 1000).toISOString(),
     })
     .eq('id', integracao.id);
