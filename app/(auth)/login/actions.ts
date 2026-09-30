@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/server';
 export async function login(_prevState: { erro?: string } | undefined, formData: FormData) {
   const email = String(formData.get('email') ?? '').trim();
   const senha = String(formData.get('senha') ?? '');
-  console.log(senha, email)
 
   if (!email || !senha) {
     return { erro: 'Informe e-mail e senha.' };

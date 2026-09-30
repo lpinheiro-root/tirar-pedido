@@ -6,7 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const { userId } = await requireRepresentante('admin');
-  const destino = new URL('/admin/cartao/integracoes', request.url);
+  // Na Netlify, request.url traz o endereço interno do deploy (<id>--site.netlify.app),
+  // onde o navegador não tem a sessão: a volta usa o domínio oficial do ML_REDIRECT_URI.
+  const destino = new URL('/admin/cartao/integracoes', process.env.ML_REDIRECT_URI ?? request.url);
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');
 
