@@ -136,3 +136,10 @@ export const IconDownload = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
   </svg>
 );
+
+export const IconCreditCard = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M2 10h20M6 15h4" />
+  </svg>
+);

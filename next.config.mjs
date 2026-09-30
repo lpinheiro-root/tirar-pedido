@@ -7,7 +7,9 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['mssql', 'exceljs'],
+    serverComponentsExternalPackages: ['mssql', 'exceljs', 'unpdf'],
+    // faturas em PDF passam do limite padrão de 1 MB das server actions
+    serverActions: { bodySizeLimit: '15mb' },
   },
 };
 

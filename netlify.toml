@@ -1,0 +1,9 @@
+# Deploy na Netlify (plano grátis). O runtime de Next.js é aplicado
+# automaticamente. Somente o módulo Cartão funciona aqui: pedidos/produtos
+# dependem do SQL Server interno, que não é acessível pela nuvem.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"

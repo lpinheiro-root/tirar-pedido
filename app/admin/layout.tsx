@@ -2,7 +2,7 @@ import { requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { LogoutButton } from '@/components/layout/LogoutButton';
-import { IconChart, IconClipboard, IconBox, IconUsers } from '@/components/ui/Icons';
+import { IconChart, IconClipboard, IconBox, IconUsers, IconCreditCard } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
@@ -12,6 +12,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: '/admin/pedidos', label: 'Pedidos', icon: <IconClipboard /> },
     { href: '/admin/produtos', label: 'Produtos', icon: <IconBox /> },
     { href: '/admin/representantes', label: 'Representantes', icon: <IconUsers /> },
+    { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
   ];
 
   return (
