@@ -3,7 +3,7 @@ import { CartProvider } from '@/components/cart/CartContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { ClientSelectorBadge } from '@/components/cart/ClientSelectorBadge';
-import { LogoutButton } from '@/components/layout/LogoutButton';
+import { SidebarFooter } from '@/components/layout/SidebarFooter';
 import { IconHome, IconBox, IconClipboard, IconCart } from '@/components/ui/Icons';
 
 export default async function RepresentanteLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export default async function RepresentanteLayout({ children }: { children: Reac
           links={links}
           nome={representante.nome}
           subtitulo="Representante B2B"
-          footer={<LogoutButton />}
+          footer={<SidebarFooter contaHref="/representante/conta" />}
         />
         <div className="flex min-h-screen flex-1 flex-col">
           <Header rightSlot={<ClientSelectorBadge />} />

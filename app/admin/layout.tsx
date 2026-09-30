@@ -1,7 +1,7 @@
 import { requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
-import { LogoutButton } from '@/components/layout/LogoutButton';
+import { SidebarFooter } from '@/components/layout/SidebarFooter';
 import { IconChart, IconClipboard, IconBox, IconUsers, IconCreditCard } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         links={links}
         nome={representante.nome}
         subtitulo="Administrador"
-        footer={<LogoutButton />}
+        footer={<SidebarFooter contaHref="/admin/conta" />}
       />
       <div className="flex min-h-screen flex-1 flex-col">
         <Header />

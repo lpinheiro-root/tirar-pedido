@@ -9,14 +9,20 @@ import type { Representante } from '@/types';
 export function RepresentanteRow({ representante }: { representante: Representante }) {
   const [pending, startTransition] = useTransition();
   const [redefinindo, setRedefinindo] = useState(false);
+  const [formAberto, setFormAberto] = useState(false);
+  const [senhaEscolhida, setSenhaEscolhida] = useState('');
   const [resultado, setResultado] = useState<{ senha?: string; erro?: string } | null>(null);
 
   async function handleRedefinirSenha() {
     setRedefinindo(true);
     setResultado(null);
-    const res = await redefinirSenhaRepresentante(representante.id);
+    const res = await redefinirSenhaRepresentante(representante.id, senhaEscolhida);
     setResultado(res);
     setRedefinindo(false);
+    if (res.senha) {
+      setFormAberto(false);
+      setSenhaEscolhida('');
+    }
   }
 
   return (
@@ -53,8 +59,15 @@ export function RepresentanteRow({ representante }: { representante: Representan
         </td>
         <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" disabled={redefinindo} onClick={handleRedefinirSenha}>
-              {redefinindo ? 'Gerando...' : 'Redefinir senha'}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFormAberto((aberto) => !aberto);
+                setResultado(null);
+              }}
+            >
+              Redefinir senha
             </Button>
             <Button
               variant={representante.ativo ? 'danger' : 'secondary'}
@@ -69,6 +82,41 @@ export function RepresentanteRow({ representante }: { representante: Representan
           </div>
         </td>
       </tr>
+      {formAberto && (
+        <tr className="border-t border-border-muted bg-surface-container-low/50">
+          <td colSpan={7} className="px-4 py-3">
+            <form
+              className="flex flex-wrap items-center gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRedefinirSenha();
+              }}
+            >
+              <span className="text-body-sm text-on-surface">
+                Nova senha para <span className="font-medium">{representante.nome}</span>:
+              </span>
+              <input
+                type="text"
+                value={senhaEscolhida}
+                onChange={(e) => setSenhaEscolhida(e.target.value)}
+                placeholder="Digite (mín. 8) ou deixe vazio para gerar"
+                autoComplete="off"
+                className="h-9 w-72 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-3 text-body-sm text-on-surface placeholder:text-outline focus:border-primary focus:outline-none"
+              />
+              <Button type="submit" size="sm" disabled={redefinindo}>
+                {redefinindo ? 'Salvando...' : senhaEscolhida.trim() ? 'Definir senha' : 'Gerar senha'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setFormAberto(false)}
+                className="text-label text-on-surface-variant hover:text-on-surface"
+              >
+                Cancelar
+              </button>
+            </form>
+          </td>
+        </tr>
+      )}
       {resultado && (
         <tr className="border-t border-border-muted bg-surface-container-low/50">
           <td colSpan={7} className="px-4 py-3">

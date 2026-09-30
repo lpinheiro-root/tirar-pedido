@@ -72,12 +72,18 @@ export async function criarRepresentante(
 }
 
 export async function redefinirSenhaRepresentante(
-  id: string
+  id: string,
+  senhaEscolhida?: string
 ): Promise<{ senha?: string; erro?: string }> {
   await requireRepresentante('admin');
 
+  const escolhida = senhaEscolhida?.trim();
+  if (escolhida && escolhida.length < 8) {
+    return { erro: 'A senha precisa ter pelo menos 8 caracteres.' };
+  }
+
   const serviceClient = createServiceRoleClient();
-  const novaSenha = gerarSenhaTemporaria();
+  const novaSenha = escolhida || gerarSenhaTemporaria();
 
   const { error } = await serviceClient.auth.admin.updateUserById(id, { password: novaSenha });
 
