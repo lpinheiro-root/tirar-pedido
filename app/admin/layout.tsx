@@ -2,23 +2,19 @@ import { requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
-import { IconChart, IconClipboard, IconBox, IconUsers, IconCreditCard } from '@/components/ui/Icons';
+import { IconCreditCard } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
 
-  const links = [
-    { href: '/admin', label: 'Visão Geral', icon: <IconChart /> },
-    { href: '/admin/pedidos', label: 'Pedidos', icon: <IconClipboard /> },
-    { href: '/admin/produtos', label: 'Produtos', icon: <IconBox /> },
-    { href: '/admin/representantes', label: 'Representantes', icon: <IconUsers /> },
-    { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
-  ];
+  // Nesta versão (Natuhair Cartão) o painel admin expõe só o módulo Cartão.
+  const links = [{ href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> }];
 
   return (
     <div className="flex min-h-screen bg-surface">
       <Sidebar
         links={links}
+        titulo="Natuhair Cartão"
         nome={representante.nome}
         subtitulo="Administrador"
         footer={<SidebarFooter contaHref="/admin/conta" />}

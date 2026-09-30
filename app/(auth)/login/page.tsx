@@ -18,9 +18,9 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-h1 text-on-surface">Natuhair Pedidos</h1>
+          <h1 className="text-h1 text-on-surface">Natuhair Cartão</h1>
           <p className="mt-1 text-body text-on-surface-variant">
-            Acesse sua conta de representante B2B
+            Conciliação de faturas de cartão
           </p>
         </div>
 
@@ -30,7 +30,7 @@ export default function LoginPage() {
           🔒 ACESSO SEGURO SSL
         </p>
         <p className="mt-1 text-center text-body-sm text-on-surface-variant">
-          Este é um portal restrito para representantes autorizados da Natuhair.
+          Este é um portal restrito para usuários autorizados da Natuhair.
         </p>
       </div>
     </main>

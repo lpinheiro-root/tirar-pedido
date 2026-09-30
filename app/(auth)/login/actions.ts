@@ -35,5 +35,5 @@ export async function login(_prevState: { erro?: string } | undefined, formData:
     return { erro: 'Este acesso está desativado. Fale com o administrador.' };
   }
 
-  redirect(representante.role === 'admin' ? '/admin' : '/representante');
+  redirect(representante.role === 'admin' ? '/admin/cartao' : '/representante');
 }

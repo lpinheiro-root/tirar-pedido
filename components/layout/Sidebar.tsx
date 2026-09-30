@@ -15,11 +15,13 @@ export function Sidebar({
   nome,
   subtitulo,
   footer,
+  titulo = 'Natuhair Pedidos',
 }: {
   links: SidebarLink[];
   nome: string;
   subtitulo: string;
   footer?: React.ReactNode;
+  titulo?: string;
 }) {
   const pathname = usePathname();
 
@@ -37,7 +39,7 @@ export function Sidebar({
               />
             </svg>
           </div>
-          <span className="text-h2 text-primary">Natuhair Pedidos</span>
+          <span className="text-h2 text-primary">{titulo}</span>
         </div>
 
         <nav className="flex flex-col gap-1 px-3">

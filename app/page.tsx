@@ -15,5 +15,5 @@ export default async function RootPage() {
     .eq('id', user.id)
     .single();
 
-  redirect(representante?.role === 'admin' ? '/admin' : '/representante');
+  redirect(representante?.role === 'admin' ? '/admin/cartao' : '/representante');
 }
