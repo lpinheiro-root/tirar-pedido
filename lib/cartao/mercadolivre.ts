@@ -33,6 +33,8 @@ export interface CompraML {
   valor_total: number;
   parcelas: number;
   valor_parcela: number | null;
+  /** pedidos e packs do pagamento — o vendedor costuma citar um deles na nota fiscal */
+  pedidos: string[];
   fonte: 'api';
 }
 
@@ -58,6 +60,7 @@ interface PagamentoML {
 
 interface PedidoML {
   id: number;
+  pack_id?: number | null;
   date_created: string;
   order_items?: { item?: { title?: string } }[];
   payments?: PagamentoML[];
@@ -171,7 +174,7 @@ async function tokenValido(integracao: IntegracaoML): Promise<string> {
  */
 export async function buscarCompras(integracao: IntegracaoML, desde: string): Promise<CompraML[]> {
   const token = await tokenValido(integracao);
-  const pagamentos = new Map<number, { pagamento: PagamentoML; titulos: string[]; pedidos: number[] }>();
+  const pagamentos = new Map<number, { pagamento: PagamentoML; titulos: string[]; pedidos: number[]; packs: number[] }>();
 
   const limite = 50;
   for (let offset = 0; offset < 5000; offset += limite) {
@@ -188,16 +191,17 @@ export async function buscarCompras(integracao: IntegracaoML, desde: string): Pr
       const titulos = (pedido.order_items ?? []).map((i) => i.item?.title).filter(Boolean) as string[];
       for (const pg of pedido.payments ?? []) {
         if (pg.status !== 'approved' || (pg.payment_type && pg.payment_type !== 'credit_card')) continue;
-        const atual = pagamentos.get(pg.id) ?? { pagamento: pg, titulos: [], pedidos: [] };
+        const atual = pagamentos.get(pg.id) ?? { pagamento: pg, titulos: [], pedidos: [], packs: [] };
         atual.titulos.push(...titulos);
         atual.pedidos.push(pedido.id);
+        if (pedido.pack_id) atual.packs.push(pedido.pack_id);
         pagamentos.set(pg.id, atual);
       }
     }
     if (passouDoPeriodo || offset + limite >= pagina.paging.total) break;
   }
 
-  return Array.from(pagamentos.values()).map(({ pagamento: pg, titulos, pedidos }) => ({
+  return Array.from(pagamentos.values()).map(({ pagamento: pg, titulos, pedidos, packs }) => ({
     origem: 'mercadolivre',
     conta: integracao.apelido,
     pedido_externo: `pagamento:${pg.id}`,
@@ -207,6 +211,7 @@ export async function buscarCompras(integracao: IntegracaoML, desde: string): Pr
     valor_total: pg.total_paid_amount ?? pg.transaction_amount ?? 0,
     parcelas: pg.installments && pg.installments > 0 ? pg.installments : 1,
     valor_parcela: pg.installment_amount ?? null,
+    pedidos: Array.from(new Set([...pedidos, ...packs].map(String))),
     fonte: 'api',
   }));
 }

@@ -36,7 +36,11 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isAuthRoute = pathname.startsWith('/login');
   const isPublicAsset =
-    pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/api/auth');
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/api/auth') ||
+    // chamada pela função agendada; a rota exige o CRON_SECRET
+    pathname === '/api/cartao/nfe/sincronizar';
 
   if (!user && !isAuthRoute && !isPublicAsset) {
     const url = request.nextUrl.clone();

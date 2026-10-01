@@ -29,6 +29,7 @@ interface CompraLista {
     parcela_atual: number | null;
     cartao_faturas: { vencimento: string | null } | null;
   }[];
+  cartao_notas: { id: string; situacao: string }[];
 }
 
 const FONTE_LABEL: Record<string, string> = { api: 'API', importacao: 'Planilha', manual: 'Manual' };
@@ -65,7 +66,7 @@ export default async function ComprasPage({
 
   let query = supabase
     .from('cartao_compras')
-    .select('*, cartao_lancamentos(id, fatura_id, parcela_atual, cartao_faturas(vencimento))')
+    .select('*, cartao_lancamentos(id, fatura_id, parcela_atual, cartao_faturas(vencimento)), cartao_notas(id, situacao)')
     .order('data', { ascending: false })
     .limit(500);
   if (origem !== 'todas') query = query.eq('origem', origem);
@@ -253,7 +254,18 @@ export default async function ComprasPage({
                         </Link>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {c.cartao_notas
+                        .filter((n) => n.situacao === 'completa')
+                        .map((n) => (
+                          <a
+                            key={n.id}
+                            href={`/admin/cartao/notas/${n.id}/danfe`}
+                            className="mb-1 block text-label font-medium text-primary hover:underline"
+                          >
+                            Nota fiscal
+                          </a>
+                        ))}
                       <form action={excluirCompra}>
                         <input type="hidden" name="compraId" value={c.id} />
                         <button type="submit" className="text-label font-medium text-on-surface-variant hover:text-error">

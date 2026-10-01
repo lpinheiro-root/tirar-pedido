@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const ABAS = [
   { href: '/admin/cartao', label: 'Faturas' },
   { href: '/admin/cartao/compras', label: 'Compras' },
+  { href: '/admin/cartao/notas', label: 'Notas fiscais' },
   { href: '/admin/cartao/integracoes', label: 'Integrações' },
 ];
 
@@ -15,7 +16,7 @@ export function CartaoTabs() {
     ABAS.slice(1).find((a) => pathname.startsWith(a.href))?.href ?? '/admin/cartao';
 
   return (
-    <nav className="mb-6 flex gap-1 border-b border-border-muted">
+    <nav className="mb-6 flex gap-1 print:hidden border-b border-border-muted">
       {ABAS.map((aba) => (
         <Link
           key={aba.href}
