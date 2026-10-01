@@ -39,8 +39,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/api/auth') ||
-    // chamada pela função agendada; a rota exige o CRON_SECRET
-    pathname === '/api/cartao/nfe/sincronizar';
+    // chamada pelas funções agendadas; a rota exige o CRON_SECRET
+    pathname === '/api/cartao/cron';
 
   if (!user && !isAuthRoute && !isPublicAsset) {
     const url = request.nextUrl.clone();

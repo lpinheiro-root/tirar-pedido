@@ -146,7 +146,14 @@ export default async function IntegracoesPage({
                   )}
                 </tbody>
               </table>
-              {contas.length > 0 && <SincronizarForm />}
+              {contas.length > 0 && (
+                <>
+                  <p className="mb-3 text-body-sm text-on-surface-variant">
+                    As compras são puxadas automaticamente a cada hora. Use o botão para buscar agora ou um período maior.
+                  </p>
+                  <SincronizarForm />
+                </>
+              )}
             </>
           )}
         </CardContent>

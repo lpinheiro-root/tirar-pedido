@@ -13,9 +13,9 @@ import {
 /**
  * Rotina de notas fiscais (roda agendada e pelo botão "Buscar agora" do TI):
  *  1. busca na SEFAZ os documentos novos do CNPJ (Distribuição DF-e por NSU);
- *  2. registra a Ciência da Operação das notas que só vieram em resumo — a SEFAZ
- *     então passa a distribuir o XML completo nas próximas consultas;
- *  3. casa as notas com as compras (número do pedido citado na nota ou valor + data).
+ *  2. casa as notas com as compras (número do pedido citado na nota ou valor + data);
+ *  3. registra a Ciência da Operação só das notas vinculadas a compras do cartão que
+ *     vieram em resumo — a SEFAZ então distribui o XML completo nas próximas consultas.
  *
  * Regra da SEFAZ: quando não há documento novo (cStat 137) ou já se chegou ao
  * último NSU, a próxima consulta só pode ser feita depois de 1 hora; consultar
@@ -245,7 +245,11 @@ export async function executarSincronizacaoNFe(): Promise<ResultadoSincronizacao
     proxima = new Date(Date.now() + 15 * 60_000).toISOString();
   }
 
-  // ciência das notas que só vieram em resumo (lote de até 20)
+  // vincula primeiro (pelo resumo: valor + data) para saber quais notas são de compras do cartão
+  let vinculadas = await vincularNotas(service);
+
+  // ciência só das notas já vinculadas a uma compra do cartão: notas de fornecedores
+  // e demais operações do CNPJ ficam intocadas para o setor fiscal (lote de até 20)
   let ciencias = 0;
   const falhasCiencia: string[] = [];
   if (Date.now() - inicio < ORCAMENTO_MS + 1_000) {
@@ -254,6 +258,7 @@ export async function executarSincronizacaoNFe(): Promise<ResultadoSincronizacao
       .select('chave')
       .eq('situacao', 'resumo')
       .is('ciencia_em', null)
+      .not('compra_id', 'is', null)
       .order('data_emissao', { ascending: false })
       .limit(20);
     if (pendentes?.length) {
@@ -276,7 +281,7 @@ export async function executarSincronizacaoNFe(): Promise<ResultadoSincronizacao
     }
   }
 
-  const vinculadas = await vincularNotas(service);
+  vinculadas += await vincularNotas(service);
   const resumo =
     `${recebidos} documento(s) recebido(s), ${ciencias} ciência(s) registrada(s), ${vinculadas} nota(s) vinculada(s). ` +
     `SEFAZ: ${status}` +

@@ -96,8 +96,9 @@ export default async function NotasPage({ searchParams }: { searchParams: { filt
           <CardContent>
             <CertificadoForm ufAtual={config?.uf ?? null} />
             <p className="mt-3 text-label text-on-surface-variant">
-              O arquivo fica guardado em área privada e só o servidor tem acesso. Ao receber uma nota nova, o sistema
-              registra a Ciência da Operação na SEFAZ para liberar o XML completo.
+              O arquivo fica guardado em área privada e só o servidor tem acesso. A Ciência da Operação é registrada
+              apenas nas notas vinculadas a compras do cartão (para liberar o XML completo); as demais notas do CNPJ
+              não são manifestadas.
             </p>
           </CardContent>
         </Card>

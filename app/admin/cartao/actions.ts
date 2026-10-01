@@ -7,111 +7,22 @@ import { requireRepresentante } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { extrairLinhasPdf, PdfSenhaError } from '@/lib/cartao/pdf';
 import { parseLinhas } from '@/lib/cartao/parser';
-import { conciliar, chaveParcela, avaliar } from '@/lib/cartao/conciliacao';
+import { avaliar } from '@/lib/cartao/conciliacao';
+import {
+  compraConciliavel,
+  conciliarFatura,
+  conciliarPendentes,
+  lancamentoConciliavel,
+  somarDias,
+} from '@/lib/cartao/conciliacaoDb';
 import { lerPlanilhaCompras } from '@/lib/cartao/importacao';
-import { buscarCompras, type IntegracaoML } from '@/lib/cartao/mercadolivre';
-
-type Supabase = ReturnType<typeof createClient>;
+import { contasML, sincronizarContasML } from '@/lib/cartao/sincronizacaoML';
+import { vincularNotas } from '@/lib/cartao/nfe';
 
 export interface FormResultado {
   erro?: string;
   precisaSenha?: boolean;
   mensagem?: string;
-}
-
-const DIA_MS = 86_400_000;
-
-function somarDias(data: string, dias: number): string {
-  return new Date(Date.parse(data) + dias * DIA_MS).toISOString().slice(0, 10);
-}
-
-function compraConciliavel(c: Record<string, unknown>) {
-  return {
-    id: c.id as string,
-    origem: c.origem as string,
-    loja: c.loja as string | null,
-    descricao: c.descricao as string | null,
-    data: c.data as string,
-    valorTotal: Number(c.valor_total),
-    parcelas: Number(c.parcelas),
-    valorParcela: c.valor_parcela == null ? null : Number(c.valor_parcela),
-  };
-}
-
-function lancamentoConciliavel(l: Record<string, unknown>) {
-  return {
-    id: l.id as string,
-    data: l.data as string,
-    descricao: l.descricao as string,
-    valor: Number(l.valor),
-    parcelaAtual: l.parcela_atual as number | null,
-    parcelaTotal: l.parcela_total as number | null,
-  };
-}
-
-/**
- * Concilia automaticamente os lançamentos de compra ainda pendentes de uma fatura,
- * só contra as compras do dono da fatura (o super admin enxerga tudo, mas não
- * pode misturar compras de um usuário com a fatura de outro).
- */
-async function conciliarFatura(supabase: Supabase, faturaId: string): Promise<number> {
-  const { data: fatura } = await supabase
-    .from('cartao_faturas')
-    .select('criado_por')
-    .eq('id', faturaId)
-    .maybeSingle();
-  if (!fatura?.criado_por) return 0;
-
-  const { data: pendentes } = await supabase
-    .from('cartao_lancamentos')
-    .select('*')
-    .eq('fatura_id', faturaId)
-    .eq('tipo', 'compra')
-    .eq('status', 'pendente');
-  if (!pendentes?.length) return 0;
-
-  const lancamentos = pendentes.map(lancamentoConciliavel);
-  const datas = lancamentos.map((l) => l.data).sort();
-  const maiorParcela = Math.max(1, ...lancamentos.map((l) => l.parcelaAtual ?? 1));
-  const { data: compras } = await supabase
-    .from('cartao_compras')
-    .select('*')
-    .eq('usuario_id', fatura.criado_por)
-    .gte('data', somarDias(datas[0], -Math.ceil(maiorParcela * 31) - 10))
-    .lte('data', somarDias(datas[datas.length - 1], 3));
-  if (!compras?.length) return 0;
-
-  const { data: jaVinculados } = await supabase
-    .from('cartao_lancamentos')
-    .select('compra_id, parcela_atual')
-    .in('compra_id', compras.map((c) => c.id));
-  const usadas = new Set(
-    (jaVinculados ?? []).map((v) => chaveParcela(v.compra_id as string, v.parcela_atual as number | null))
-  );
-
-  const vinculos = conciliar(lancamentos, compras.map(compraConciliavel), usadas);
-  for (const v of vinculos) {
-    await supabase
-      .from('cartao_lancamentos')
-      .update({ status: v.status, compra_id: v.compraId, vinculo: 'auto', diferenca: v.diferenca })
-      .eq('id', v.lancamentoId)
-      .eq('status', 'pendente');
-  }
-  return vinculos.length;
-}
-
-/** Depois de novas compras entrarem, tenta conciliar as faturas com pendências. */
-async function conciliarPendentes(supabase: Supabase): Promise<number> {
-  const { data } = await supabase
-    .from('cartao_lancamentos')
-    .select('fatura_id')
-    .eq('tipo', 'compra')
-    .eq('status', 'pendente')
-    .limit(5000);
-  const faturas = Array.from(new Set((data ?? []).map((l) => l.fatura_id as string)));
-  let total = 0;
-  for (const id of faturas) total += await conciliarFatura(supabase, id);
-  return total;
 }
 
 function revalidarCartao() {
@@ -364,40 +275,16 @@ export async function sincronizarMercadoLivre(
   const desde = somarDias(new Date().toISOString().slice(0, 10), -dias);
 
   // tokens só no servidor: a tabela não tem policies, então o filtro de dono é aqui
-  const service = createServiceRoleClient();
-  let consulta = service.from('cartao_integracoes').select('*').eq('provedor', 'mercadolivre');
-  if (!representante.super_admin) consulta = consulta.eq('usuario_id', userId);
-  const { data: contas } = await consulta;
-  if (!contas?.length) return { erro: 'Nenhuma conta do Mercado Livre conectada.' };
+  const contas = await contasML(representante.super_admin ? undefined : userId);
+  if (!contas.length) return { erro: 'Nenhuma conta do Mercado Livre conectada.' };
 
-  const supabase = createClient();
-  let total = 0;
-  const falhas: string[] = [];
-  for (const conta of contas as (IntegracaoML & { usuario_id: string })[]) {
-    try {
-      const compras = (await buscarCompras(conta, desde))
-        .filter((c) => c.valor_total > 0 && c.data)
-        .map((c) => ({ ...c, usuario_id: conta.usuario_id }));
-      if (compras.length) {
-        // service role: o super admin pode sincronizar a conta de outro usuário
-        const { error } = await service
-          .from('cartao_compras')
-          .upsert(compras, { onConflict: 'usuario_id,origem,pedido_externo' });
-        if (error) throw new Error(error.message);
-      }
-      await service
-        .from('cartao_integracoes')
-        .update({ ultima_sincronizacao: new Date().toISOString() })
-        .eq('id', conta.id);
-      total += compras.length;
-    } catch (e) {
-      falhas.push(`${conta.apelido}: ${(e as Error).message}`);
-    }
-  }
-
-  const conciliados = await conciliarPendentes(supabase);
+  const { total, falhas } = await sincronizarContasML(contas, desde);
+  const conciliados = await conciliarPendentes(createClient());
+  const notas = await vincularNotas(createServiceRoleClient());
   revalidarCartao();
-  const mensagem = `${total} compra(s) sincronizada(s), ${conciliados} lançamento(s) conciliado(s).`;
+  const mensagem =
+    `${total} compra(s) sincronizada(s), ${conciliados} lançamento(s) conciliado(s)` +
+    (notas ? `, ${notas} nota(s) fiscal(is) vinculada(s).` : '.');
   return falhas.length ? { erro: `${mensagem} Falhas: ${falhas.join('; ')}` } : { mensagem };
 }
 
