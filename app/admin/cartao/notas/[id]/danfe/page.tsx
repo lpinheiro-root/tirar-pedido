@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatCurrency } from '@/lib/format';
 import { lerXml } from '@/lib/cartao/sefaz';
 import { ImprimirButton } from './ImprimirButton';
+import { xmlDaNota } from '@/lib/cartao/xmlNota';
 
 type No = Record<string, unknown>;
 const txt = (v: unknown) => (v == null ? '' : String(v));
@@ -43,12 +44,13 @@ export default async function DanfePage({ params }: { params: { id: string } }) 
   await requireRepresentante('admin');
   const { data: nota } = await createClient()
     .from('cartao_notas')
-    .select('chave, xml')
+    .select('chave, xml, xml_gz')
     .eq('id', params.id)
     .maybeSingle();
-  if (!nota?.xml) notFound();
+  const xml = xmlDaNota(nota);
+  if (!nota || !xml) notFound();
 
-  const doc = lerXml(nota.xml);
+  const doc = lerXml(xml);
   const proc = (doc.nfeProc ?? doc.procNFe ?? {}) as No;
   const inf = ((proc.NFe as No)?.infNFe ?? {}) as Record<string, No>;
   const prot = ((proc.protNFe as No)?.infProt ?? {}) as No;

@@ -1,18 +1,19 @@
 // Robô de notas fiscais: Alterdata Pack (NF-Stock) e caixas de e-mail → Natuhair Finanças.
 //
 // Roda dentro da rede (servidor 10.0.255.126, PM2, a cada 30 min):
-//  1. lista pelo índice (sem abrir XML) as chaves das NF-e do mês atual e do
-//     anterior em wfiscal.arquivos_xml_danfe, descartando as emitidas pelas
-//     próprias empresas (o CNPJ do emitente está na chave);
+//  1. lista pelo índice (sem abrir XML) as chaves das NF-e (modelo 55) do mês
+//     atual e do anterior em wfiscal.arquivos_xml_danfe;
 //  2. abre só as chaves ainda não vistas (cache em estado.json) e fica com as
-//     notas cujo destinatário é uma das empresas que compram no cartão;
-//  3. grava essas notas (XML completo) no Supabase e pede ao site para
-//     vincular as notas às compras.
+//     notas cujo destinatário é uma das empresas cadastradas no NF-Stock
+//     (wfiscal.configuracao_nfstock) — inclusive transferências entre elas;
+//  3. grava essas notas (XML comprimido) no Supabase e pede ao site para
+//     vincular as notas às compras do cartão.
 // O acesso ao Alterdata é feito com um usuário somente leitura.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { XMLParser } from 'fast-xml-parser';
@@ -33,8 +34,8 @@ function lerEnv(arquivo) {
 }
 
 const env = { ...lerEnv(path.join(DIR, '.env')), ...process.env };
-const EMPRESAS = (env.EMPRESAS_CNPJ ?? '').split(',').map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 14);
-const RAIZES = Array.from(new Set(EMPRESAS.map((c) => c.slice(0, 8))));
+// empresas extras além das do NF-Stock (opcional)
+const EMPRESAS_EXTRAS = (env.EMPRESAS_CNPJ ?? '').split(',').map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 14);
 const LOTE = 200;
 const MAX_POR_RODADA = Number(env.MAX_POR_RODADA ?? 3000);
 const UFS = ['11', '12', '13', '14', '15', '16', '17', '21', '22', '23', '24', '25', '26', '27', '28', '29', '31', '32', '33', '35', '41', '42', '43', '50', '51', '52', '53'];
@@ -43,7 +44,6 @@ for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
   if (!env[k]) throw new Error(`Configuração ausente: ${k}`);
 }
 const USA_ALTERDATA = Boolean(env.ALTERDATA_HOST && env.ALTERDATA_SENHA);
-if (USA_ALTERDATA && !EMPRESAS.length) throw new Error('Configuração ausente: EMPRESAS_CNPJ');
 const CAIXAS = caixasConfiguradas(env);
 
 /** Meses (AAMM, como na chave de acesso) do mês atual e do anterior, no horário de Brasília. */
@@ -103,10 +103,13 @@ function lerNota(chave, xml) {
     cnpj_emitente: String(emit.CNPJ ?? emit.CPF ?? ''),
     nome_emitente: String(emit.xNome ?? ''),
     cnpj_destinatario: destinatarioCnpj(xml),
+    nome_destinatario: String(inf.dest?.xNome ?? '') || null,
     data_emissao: String(inf.ide?.dhEmi ?? inf.ide?.dEmi ?? '') || null,
     valor_total: Number(inf.total?.ICMSTot?.vNF ?? 0),
     situacao: 'completa',
-    xml,
+    // XML comprimido (gzip/base64) para economizar espaço no Supabase
+    xml: null,
+    xml_gz: gzipSync(Buffer.from(xml, 'utf8')).toString('base64'),
     pedidos_ref: Array.from(new Set(textos.match(/\b\d{10,20}\b/g) ?? [])),
     atualizado_em: new Date().toISOString(),
   };
@@ -129,12 +132,17 @@ async function buscarAlterdata(supabase, estado, meses) {
   let analisadas = 0;
   let enviadas = 0;
   try {
-    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda
-    //    CT-e, modelo 57), sem as emitidas pelas próprias empresas
+    // empresas cadastradas no NF-Stock (lidas a cada rodada: empresa nova entra sozinha)
+    const { rows: cadastro } = await db.query(
+      "select distinct regexp_replace(empresa_cnpj, '\\D', '', 'g') as cnpj from wfiscal.configuracao_nfstock"
+    );
+    const empresas = new Set([...cadastro.map((r) => r.cnpj).filter((c) => c?.length === 14), ...EMPRESAS_EXTRAS]);
+    if (!empresas.size) throw new Error('nenhuma empresa cadastrada no NF-Stock');
+
+    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda CT-e, modelo 57)
     const faixas = meses.flatMap((aamm) => UFS.map((uf) => `(id >= '${uf}${aamm}' and id < '${uf}${proximoAamm(aamm)}')`));
     const { rows } = await db.query(
-      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55' and substring(id, 7, 8) <> all($1::text[])`,
-      [RAIZES]
+      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55'`
     );
     const novas = rows.map((r) => r.id).filter((id) => !estado.vistos[id]).slice(0, MAX_POR_RODADA);
 
@@ -145,7 +153,7 @@ async function buscarAlterdata(supabase, estado, meses) {
       const notas = [];
       for (const { id, xml } of xmls) {
         analisadas++;
-        if (EMPRESAS.includes(destinatarioCnpj(xml ?? ''))) {
+        if (empresas.has(destinatarioCnpj(xml ?? ''))) {
           try { notas.push(lerNota(id, xml)); } catch (e) { console.log('nota ilegível', id, e.message); }
         }
       }

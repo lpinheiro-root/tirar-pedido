@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     createClient()
       .from('cartao_notas')
       .select(
-        'chave, nome_emitente, cnpj_emitente, cnpj_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)'
+        'chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)'
       ),
     filtros
   )
@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
       Série: Number(n.chave.slice(22, 25)),
       Emitente: n.nome_emitente ?? '',
       'CNPJ emitente': formatarCnpj(n.cnpj_emitente),
-      Empresa: n.cnpj_destinatario ? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? formatarCnpj(n.cnpj_destinatario) : '',
+      Empresa: n.nome_destinatario ?? (n.cnpj_destinatario ? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? '' : ''),
+      'CNPJ empresa': formatarCnpj(n.cnpj_destinatario),
       Valor: n.valor_total != null ? Number(n.valor_total) : null,
       Situação: n.situacao === 'cancelada' ? 'Cancelada' : 'Autorizada',
       'Compra do cartão': c ? `${ORIGEM_LABEL[c.origem] ?? c.origem} · ${c.descricao ?? ''}` : '',
@@ -39,6 +40,6 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const sufixo = [filtros.mes, filtros.empresa ? EMPRESAS_GRUPO[filtros.empresa] : ''].filter(Boolean).join('-');
+  const sufixo = [filtros.mes, filtros.empresa ? EMPRESAS_GRUPO[filtros.empresa] ?? filtros.empresa : ''].filter(Boolean).join('-');
   return respostaExcel(linhas, 'NF-e Recebidas', `nfe-recebidas${sufixo ? '-' + sufixo : ''}.xlsx`);
 }

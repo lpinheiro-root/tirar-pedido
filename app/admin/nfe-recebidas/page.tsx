@@ -18,6 +18,7 @@ interface NotaLinha {
   nome_emitente: string | null;
   cnpj_emitente: string | null;
   cnpj_destinatario: string | null;
+  nome_destinatario: string | null;
   data_emissao: string | null;
   valor_total: number | null;
   situacao: 'resumo' | 'completa' | 'cancelada';
@@ -37,12 +38,12 @@ export default async function NfeRecebidasPage({
   const filtros = lerFiltros(searchParams);
   const pagina = Math.max(1, Number(searchParams.pagina) || 1);
 
-  const [{ data, count }, { data: valores }, robo] = await Promise.all([
+  const [{ data, count }, { data: valores }, robo, { data: destinatarios }] = await Promise.all([
     aplicarFiltros(
       supabase
         .from('cartao_notas')
         .select(
-          'id, chave, nome_emitente, cnpj_emitente, cnpj_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)',
+          'id, chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)',
           { count: 'exact' }
         ),
       filtros
@@ -51,7 +52,11 @@ export default async function NfeRecebidasPage({
       .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1),
     aplicarFiltros(supabase.from('cartao_notas').select('valor_total').neq('situacao', 'cancelada'), filtros).limit(20000),
     lerConfigNFe(createServiceRoleClient()),
+    supabase.from('nfe_destinatarios').select('cnpj, nome, notas').order('nome'),
   ]);
+  const empresas = (destinatarios ?? []) as { cnpj: string; nome: string | null; notas: number }[];
+  const nomeEmpresa = (cnpj: string | null, nome?: string | null) =>
+    cnpj ? EMPRESAS_GRUPO[cnpj] ?? nome ?? empresas.find((e) => e.cnpj === cnpj)?.nome ?? formatarCnpj(cnpj) : '—';
   const notas = (data ?? []) as unknown as NotaLinha[];
   const total = count ?? 0;
   const soma = (valores ?? []).reduce((s, v) => s + Number(v.valor_total ?? 0), 0);
@@ -61,7 +66,7 @@ export default async function NfeRecebidasPage({
     <div>
       <PageHeading
         title="NF-e Recebidas"
-        subtitle="Notas fiscais recebidas pela Biosense, Veneza e Roma, trazidas do Alterdata (NF-Stock)."
+        subtitle="Notas fiscais emitidas contra as empresas cadastradas no NF-Stock, trazidas do Alterdata."
       />
 
       <Card className="mb-4 p-4">
@@ -70,9 +75,9 @@ export default async function NfeRecebidasPage({
             <label className="mb-1 block text-label text-on-surface-variant">Empresa</label>
             <select name="empresa" defaultValue={filtros.empresa} className={campoClasse}>
               <option value="">Todas</option>
-              {Object.entries(EMPRESAS_GRUPO).map(([cnpj, nome]) => (
-                <option key={cnpj} value={cnpj}>
-                  {nome}
+              {empresas.map((e) => (
+                <option key={e.cnpj} value={e.cnpj}>
+                  {nomeEmpresa(e.cnpj, e.nome)} ({e.notas})
                 </option>
               ))}
             </select>
@@ -160,8 +165,10 @@ export default async function NfeRecebidasPage({
                     </p>
                     <p className="text-label text-on-surface-variant">{formatarCnpj(n.cnpj_emitente)}</p>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-body-sm text-on-surface">
-                    {n.cnpj_destinatario ? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? formatarCnpj(n.cnpj_destinatario) : '—'}
+                  <td className="px-4 py-3 text-body-sm text-on-surface">
+                    <p className="max-w-48 truncate" title={n.nome_destinatario ?? ''}>
+                      {nomeEmpresa(n.cnpj_destinatario, n.nome_destinatario)}
+                    </p>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     <p className="text-body font-medium text-on-surface">
