@@ -248,7 +248,7 @@ export default async function ComprasPage({
                     </td>
                     <td className="px-4 py-3">
                       {encontradas === 0 ? (
-                        <span className="text-body-sm text-on-surface-variant">Não localizada</span>
+                        <span className="whitespace-nowrap text-body-sm text-on-surface-variant">Não localizada</span>
                       ) : (
                         <Link
                           href={`/admin/cartao/${c.cartao_lancamentos[0].fatura_id}`}

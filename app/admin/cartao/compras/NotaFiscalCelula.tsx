@@ -46,9 +46,11 @@ export function NotaFiscalCelula({
 
   if (faturamento === 'cpf') {
     return (
-      <p className="max-w-44 text-label text-on-surface-variant">
-        Compra no CPF — sem nota fiscal para a empresa.
-      </p>
+      <Situacao
+        etiqueta="Compra no CPF"
+        detalhe="sem nota para a empresa"
+        classe="bg-surface-container text-on-surface-variant"
+      />
     );
   }
 
@@ -56,14 +58,29 @@ export function NotaFiscalCelula({
   const empresa = faturamentoCnpj ? EMPRESAS[faturamentoCnpj] : null;
   if (dias <= 7) {
     return (
-      <p className="max-w-44 text-label text-on-surface-variant">
-        Aguardando o vendedor emitir a nota{empresa ? ` para a ${empresa}` : ''}.
-      </p>
+      <Situacao
+        etiqueta="Aguardando emissão"
+        detalhe={empresa ? `vendedor ainda não emitiu (${empresa})` : 'vendedor ainda não emitiu'}
+        classe="bg-blue-50 text-primary"
+      />
     );
   }
   return (
-    <p className="max-w-44 text-label font-medium text-amber-800">
-      Sem nota há {dias} dias{empresa ? ` (${empresa})` : ''} — peça ao vendedor.
-    </p>
+    <Situacao
+      etiqueta={`Sem nota há ${dias} dias`}
+      detalhe={empresa ? `${empresa} · peça ao vendedor` : 'peça ao vendedor'}
+      classe="bg-amber-100 text-amber-800"
+    />
+  );
+}
+
+function Situacao({ etiqueta, detalhe, classe }: { etiqueta: string; detalhe: string; classe: string }) {
+  return (
+    <div className="min-w-[150px]">
+      <span className={`inline-flex whitespace-nowrap rounded-sm px-2 py-1 text-label font-medium ${classe}`}>
+        {etiqueta}
+      </span>
+      <p className="mt-1 whitespace-nowrap text-label text-on-surface-variant">{detalhe}</p>
+    </div>
   );
 }
