@@ -37,6 +37,9 @@ const env = { ...lerEnv(path.join(DIR, '.env')), ...process.env };
 // empresas extras além das do NF-Stock (opcional)
 const EMPRESAS_EXTRAS = (env.EMPRESAS_CNPJ ?? '').split(',').map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 14);
 const LOTE = 200;
+// carga histórica pontual: MESES=2601,2602,... (AAMM) e SO_DEVOLUCOES=1
+const MESES_FIXOS = (env.MESES ?? '').split(',').map((m) => m.trim()).filter((m) => /^\d{4}$/.test(m));
+const SO_DEVOLUCOES = env.SO_DEVOLUCOES === '1';
 const MAX_POR_RODADA = Number(env.MAX_POR_RODADA ?? 3000);
 const UFS = ['11', '12', '13', '14', '15', '16', '17', '21', '22', '23', '24', '25', '26', '27', '28', '29', '31', '32', '33', '35', '41', '42', '43', '50', '51', '52', '53'];
 
@@ -204,6 +207,7 @@ async function buscarAlterdata(supabase, estado, meses) {
           console.log('nota ilegível', id, e.message);
         }
       }
+      if (SO_DEVOLUCOES) notas.splice(0, notas.length, ...notas.filter((n) => n.tipo === 'devolucao'));
       if (notas.length) {
         const { error } = await supabase.from('cartao_notas').upsert(notas, { onConflict: 'chave' });
         if (error) throw new Error(`Supabase: ${error.message}`);
@@ -252,7 +256,7 @@ async function buscarEmails(supabase, estado) {
 // ── rodada ──
 async function main() {
   const inicio = Date.now();
-  const meses = mesesRecentes();
+  const meses = MESES_FIXOS.length ? MESES_FIXOS : mesesRecentes();
   const estado = lerEstado(meses);
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
