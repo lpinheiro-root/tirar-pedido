@@ -128,10 +128,11 @@ async function buscarAlterdata(supabase, estado, meses) {
   let analisadas = 0;
   let enviadas = 0;
   try {
-    // 1. chaves do período pelo índice, sem as emitidas pelas próprias empresas
+    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda
+    //    CT-e, modelo 57), sem as emitidas pelas próprias empresas
     const faixas = meses.flatMap((aamm) => UFS.map((uf) => `(id >= '${uf}${aamm}' and id < '${uf}${proximoAamm(aamm)}')`));
     const { rows } = await db.query(
-      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 7, 8) <> all($1::text[])`,
+      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55' and substring(id, 7, 8) <> all($1::text[])`,
       [RAIZES]
     );
     const novas = rows.map((r) => r.id).filter((id) => !estado.vistos[id]).slice(0, MAX_POR_RODADA);
@@ -173,7 +174,7 @@ async function buscarEmails(supabase, estado) {
       for (const xml of xmls) {
         try {
           const nota = lerNota(null, xml);
-          if (/^\d{44}$/.test(nota.chave)) porChave.set(nota.chave, nota);
+          if (/^\d{44}$/.test(nota.chave) && nota.chave.slice(20, 22) === '55') porChave.set(nota.chave, nota);
         } catch { /* XML que não é NF-e */ }
       }
       if (porChave.size) {

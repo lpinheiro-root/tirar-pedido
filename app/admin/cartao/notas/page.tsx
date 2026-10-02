@@ -90,7 +90,7 @@ export default async function NotasPage({ searchParams }: { searchParams: { filt
           {[
             { value: 'compras', label: 'Vinculadas a compras' },
             { value: 'sem_compra', label: 'Sem compra' },
-            { value: 'todas', label: 'Todas do CNPJ' },
+            { value: 'todas', label: 'Todas' },
           ].map((f) => (
             <Link
               key={f.value}
