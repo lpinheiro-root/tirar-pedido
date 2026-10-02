@@ -73,3 +73,11 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
   revalidatePath('/admin/usuarios');
   return {};
 }
+
+/** Libera ou retira o acesso ao controle de devoluções (NF-e Recebidas). */
+export async function alternarAcessoDevolucoes(id: string, acesso: boolean): Promise<{ erro?: string }> {
+  await requireSuperAdmin();
+  const { error } = await createServiceRoleClient().from('representantes').update({ acesso_devolucoes: acesso }).eq('id', id);
+  revalidatePath('/admin/usuarios');
+  return error ? { erro: error.message } : {};
+}

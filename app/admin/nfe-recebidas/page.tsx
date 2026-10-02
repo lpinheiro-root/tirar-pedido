@@ -1,65 +1,38 @@
 import Link from 'next/link';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireDevolucoes } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency, formatDateTime } from '@/lib/format';
-import { formatarCnpj, nomeCurtoEmpresa } from '@/lib/empresas';
-import { aplicarFiltros, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
+import { formatarCnpj } from '@/lib/empresas';
+import { buscarDevolucoes, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
+import { CAMPOS, nomeEmpresaPlanilha, numeroDaChave, ocorrenciaEncerrada } from '@/lib/devolucoes';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
-import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
-import { buscarTodas } from '@/lib/supabasePaginado';
+import { CelulaEditavel } from './CelulaEditavel';
 
 const POR_PAGINA = 100;
 
-interface NotaLinha {
-  id: string;
-  chave: string;
-  nome_emitente: string | null;
-  cnpj_emitente: string | null;
-  cnpj_destinatario: string | null;
-  nome_destinatario: string | null;
-  data_emissao: string | null;
-  valor_total: number | null;
-  situacao: 'resumo' | 'completa' | 'cancelada';
-  cartao_compras: { descricao: string | null; origem: string; data: string } | null;
-}
-
 const campoClasse =
   'h-9 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-2 text-body-sm text-on-surface';
+
+const opcoesDe = (campo: string) => CAMPOS.find((c) => c.campo === campo)!;
 
 export default async function NfeRecebidasPage({
   searchParams,
 }: {
   searchParams: Record<string, string | undefined>;
 }) {
-  await requireSuperAdmin();
+  await requireDevolucoes();
   const supabase = createClient();
   const filtros = lerFiltros(searchParams);
   const pagina = Math.max(1, Number(searchParams.pagina) || 1);
 
-  const [{ data, count }, valores, robo, { data: destinatarios }, { data: maisRecente }] = await Promise.all([
-    aplicarFiltros(
-      supabase
-        .from('cartao_notas')
-        .select(
-          'id, chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)',
-          { count: 'exact' }
-        ),
-      filtros
-    )
-      .order('data_emissao', { ascending: false })
-      .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1),
-    // soma de todas as notas do filtro (o Supabase devolve no máximo 1.000 por consulta)
-    buscarTodas<{ valor_total: number | null }>((de, ate) =>
-      aplicarFiltros(supabase.from('cartao_notas').select('valor_total').neq('situacao', 'cancelada'), filtros)
-        .order('id')
-        .range(de, ate)
-    ),
+  const [devolucoes, todasEmpresas, robo, { data: maisRecente }] = await Promise.all([
+    buscarDevolucoes(supabase, filtros),
+    // unidades do grupo que já receberam devoluções (para o filtro e os nomes curtos)
+    buscarDevolucoes(supabase, { empresa: '', mes: '', busca: '', situacao: '' }),
     lerConfigNFe(createServiceRoleClient()),
-    supabase.from('nfe_destinatarios').select('cnpj, nome, notas').order('nome'),
-    // emissão mais recente que já chegou (mostra o atraso da importação diária do Alterdata)
     supabase
       .from('cartao_notas')
       .select('data_emissao')
@@ -68,19 +41,31 @@ export default async function NfeRecebidasPage({
       .limit(1)
       .maybeSingle(),
   ]);
-  const empresas = (destinatarios ?? []) as { cnpj: string; nome: string | null; notas: number }[];
-  const nomeEmpresa = (cnpj: string | null, nome?: string | null) =>
-    cnpj ? nomeCurtoEmpresa(cnpj, empresas.find((e) => e.cnpj === cnpj)?.nome ?? nome) : '—';
-  const notas = (data ?? []) as unknown as NotaLinha[];
-  const total = count ?? 0;
-  const soma = (valores ?? []).reduce((s, v) => s + Number(v.valor_total ?? 0), 0);
+
+  const unidades = Array.from(
+    new Map(
+      todasEmpresas
+        .filter((d) => d.cnpj_destinatario)
+        .map((d) => [d.cnpj_destinatario!, { cnpj: d.cnpj_destinatario!, uf: d.empresa_uf, nome: d.nome_destinatario }])
+    ).values()
+  );
+  const nomeEmpresa = (cnpj: string | null, nome: string | null, uf: string | null) =>
+    nomeEmpresaPlanilha(cnpj, nome, uf, unidades);
+  const opcoesEmpresa = unidades
+    .map((u) => ({ cnpj: u.cnpj, nome: nomeEmpresa(u.cnpj, u.nome, u.uf) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  const total = devolucoes.length;
+  const soma = devolucoes.reduce((s, d) => s + Number(d.valor_total ?? 0), 0);
+  const abertas = devolucoes.filter((d) => !ocorrenciaEncerrada(d.devolucoes_acompanhamento?.status)).length;
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  const visiveis = devolucoes.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   return (
     <div>
       <PageHeading
-        title="NF-e Recebidas"
-        subtitle="Notas fiscais emitidas contra as empresas cadastradas no NF-Stock, trazidas do Alterdata."
+        title="NF-e Recebidas — Devoluções"
+        subtitle="Notas de devolução (NFD) emitidas pelos clientes contra as empresas do grupo, trazidas do Alterdata."
       />
 
       <Card className="mb-4 p-4">
@@ -89,9 +74,9 @@ export default async function NfeRecebidasPage({
             <label className="mb-1 block text-label text-on-surface-variant">Empresa</label>
             <select name="empresa" defaultValue={filtros.empresa} className={campoClasse}>
               <option value="">Todas</option>
-              {empresas.map((e) => (
+              {opcoesEmpresa.map((e) => (
                 <option key={e.cnpj} value={e.cnpj}>
-                  {nomeEmpresa(e.cnpj, e.nome)} ({e.notas})
+                  {e.nome}
                 </option>
               ))}
             </select>
@@ -101,20 +86,20 @@ export default async function NfeRecebidasPage({
             <input type="month" name="mes" defaultValue={filtros.mes} className={campoClasse} />
           </div>
           <div className="min-w-56 flex-1">
-            <label className="mb-1 block text-label text-on-surface-variant">Emitente (nome ou CNPJ)</label>
+            <label className="mb-1 block text-label text-on-surface-variant">Cliente ou nº da NFD</label>
             <input
               name="busca"
               defaultValue={filtros.busca}
-              placeholder="Ex.: Loja Exemplo ou 11.222.333"
+              placeholder="Nome, CNPJ/CPF ou número"
               className={`${campoClasse} w-full`}
             />
           </div>
           <div>
-            <label className="mb-1 block text-label text-on-surface-variant">Compra do cartão</label>
-            <select name="vinculo" defaultValue={filtros.vinculo} className={campoClasse}>
+            <label className="mb-1 block text-label text-on-surface-variant">Situação</label>
+            <select name="situacao" defaultValue={filtros.situacao} className={campoClasse}>
               <option value="">Todas</option>
-              <option value="com">Ligadas a compra</option>
-              <option value="sem">Sem compra</option>
+              <option value="abertas">Em aberto</option>
+              <option value="encerradas">Encerradas</option>
             </select>
           </div>
           <button type="submit" className="h-9 rounded-md bg-primary px-4 text-body-sm font-medium text-on-primary hover:bg-primary/90">
@@ -129,8 +114,12 @@ export default async function NfeRecebidasPage({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-6">
           <div>
-            <p className="text-label uppercase text-on-surface-variant">Notas</p>
+            <p className="text-label uppercase text-on-surface-variant">Devoluções</p>
             <p className="text-h2 text-on-surface">{total.toLocaleString('pt-BR')}</p>
+          </div>
+          <div>
+            <p className="text-label uppercase text-on-surface-variant">Em aberto</p>
+            <p className="text-h2 text-on-surface">{abertas.toLocaleString('pt-BR')}</p>
           </div>
           <div>
             <p className="text-label uppercase text-on-surface-variant">Valor total</p>
@@ -148,9 +137,7 @@ export default async function NfeRecebidasPage({
               </span>{' '}
               (o Alterdata importa do NF-Stock 1x por dia)
             </p>
-            <p>
-              Robô: {robo?.ultima_consulta ? `última leitura ${formatDateTime(robo.ultima_consulta)}` : 'ainda não rodou'}
-            </p>
+            <p>Robô: {robo?.ultima_consulta ? `última leitura ${formatDateTime(robo.ultima_consulta)}` : 'ainda não rodou'}</p>
           </div>
           <a
             href={`/api/nfe-recebidas/exportar${filtrosParaUrl(filtros)}`}
@@ -166,79 +153,98 @@ export default async function NfeRecebidasPage({
           <table className="w-full text-left">
             <thead className="bg-surface-container-low">
               <tr className="text-label uppercase text-on-surface-variant">
-                <th className="px-4 py-3 font-medium">Emissão</th>
-                <th className="px-4 py-3 font-medium">Nº / Série</th>
-                <th className="px-4 py-3 font-medium">Emitente</th>
-                <th className="px-4 py-3 font-medium">Empresa</th>
-                <th className="px-4 py-3 text-right font-medium">Valor</th>
-                <th className="px-4 py-3 font-medium">Compra do cartão</th>
-                <th className="px-4 py-3 text-right font-medium">Baixar</th>
+                <th className="px-3 py-3 font-medium">Empresa</th>
+                <th className="px-3 py-3 font-medium">Emissão</th>
+                <th className="px-3 py-3 font-medium">Cliente</th>
+                <th className="px-3 py-3 font-medium">Nota de origem</th>
+                <th className="px-3 py-3 font-medium">NFD</th>
+                <th className="px-3 py-3 text-right font-medium">Valor</th>
+                {CAMPOS.slice(0, 7).map((c) => (
+                  <th key={c.campo} className="min-w-[140px] px-3 py-3 font-medium">
+                    {c.titulo}
+                  </th>
+                ))}
+                <th className="px-3 py-3 font-medium">Estado</th>
+                <th className="min-w-[180px] px-3 py-3 font-medium">Status</th>
+                <th className="min-w-[180px] px-3 py-3 font-medium">NF fiscal</th>
+                <th className="px-3 py-3 font-medium">Baixar</th>
               </tr>
             </thead>
             <tbody>
-              {notas.map((n) => (
-                <tr key={n.id} className="border-t border-border-muted align-top">
-                  <td className="whitespace-nowrap px-4 py-3 text-body-sm text-on-surface-variant">
-                    {n.data_emissao ? new Date(n.data_emissao).toLocaleDateString('pt-BR') : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-body-sm text-on-surface">
-                    {Number(n.chave.slice(25, 34))} / {Number(n.chave.slice(22, 25))}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="max-w-80 truncate text-body text-on-surface" title={n.nome_emitente ?? ''}>
-                      {n.nome_emitente}
-                    </p>
-                    <p className="text-label text-on-surface-variant">{formatarCnpj(n.cnpj_emitente)}</p>
-                  </td>
-                  <td className="px-4 py-3 text-body-sm text-on-surface">
-                    <p className="max-w-48 truncate" title={n.nome_destinatario ?? ''}>
-                      {nomeEmpresa(n.cnpj_destinatario, n.nome_destinatario)}
-                    </p>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <p className="text-body font-medium text-on-surface">
-                      {n.valor_total != null ? formatCurrency(Number(n.valor_total)) : '—'}
-                    </p>
-                    {n.situacao === 'cancelada' && <p className="text-label font-medium text-error">Cancelada</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {n.cartao_compras ? (
-                      <>
-                        <p className="max-w-56 truncate text-body-sm text-on-surface" title={n.cartao_compras.descricao ?? ''}>
-                          {n.cartao_compras.descricao ?? '—'}
-                        </p>
-                        <p className="text-label text-on-surface-variant">
-                          {ORIGEM_LABEL[n.cartao_compras.origem] ?? n.cartao_compras.origem} ·{' '}
-                          {new Date(`${n.cartao_compras.data}T12:00:00`).toLocaleDateString('pt-BR')}
-                        </p>
-                      </>
-                    ) : (
-                      <span className="text-body-sm text-on-surface-variant">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    {n.situacao !== 'resumo' ? (
-                      <div className="flex justify-end gap-3">
+              {visiveis.map((d) => {
+                const a = d.devolucoes_acompanhamento;
+                return (
+                  <tr key={d.id} className="border-t border-border-muted align-top">
+                    <td className="whitespace-nowrap px-3 py-2 text-body-sm font-medium text-on-surface">
+                      {nomeEmpresa(d.cnpj_destinatario, d.nome_destinatario, d.empresa_uf)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-body-sm text-on-surface-variant">
+                      {d.data_emissao ? new Date(d.data_emissao).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <p className="max-w-56 truncate text-body-sm text-on-surface" title={d.cliente_nome ?? ''}>
+                        {d.cliente_nome ?? '—'}
+                      </p>
+                      <p className="text-label text-on-surface-variant">
+                        {formatarCnpj(d.cliente_doc)}
+                        {d.devolucao_origem === 'propria' ? ' · entrada própria' : ''}
+                      </p>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-body-sm text-on-surface">
+                      {(d.notas_origem ?? []).map(numeroDaChave).join(', ') || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-body-sm font-medium text-on-surface">
+                      {numeroDaChave(d.chave)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-body-sm font-medium text-on-surface">
+                      {d.valor_total != null ? formatCurrency(Number(d.valor_total)) : '—'}
+                      {d.situacao === 'cancelada' && <p className="text-label font-medium text-error">Cancelada</p>}
+                    </td>
+                    {CAMPOS.slice(0, 7).map((c) => (
+                      <td key={c.campo} className="px-2 py-1.5">
+                        <CelulaEditavel
+                          chave={d.chave}
+                          campo={c.campo}
+                          titulo={c.titulo}
+                          opcoes={c.opcoes}
+                          valor={a?.[c.campo] ?? null}
+                          sugestao={c.campo === 'transportadora' ? d.transportadora : null}
+                        />
+                      </td>
+                    ))}
+                    <td className="whitespace-nowrap px-3 py-2 text-body-sm text-on-surface">{d.cliente_uf ?? '—'}</td>
+                    {(['status', 'nf_fiscal'] as const).map((campo) => (
+                      <td key={campo} className="px-2 py-1.5">
+                        <CelulaEditavel
+                          chave={d.chave}
+                          campo={campo}
+                          titulo={opcoesDe(campo).titulo}
+                          opcoes={opcoesDe(campo).opcoes}
+                          valor={a?.[campo] ?? null}
+                          destaque
+                        />
+                      </td>
+                    ))}
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <div className="flex gap-3">
                         <a
-                          href={`/api/cartao/notas/${n.id}/pdf`}
+                          href={`/api/cartao/notas/${d.id}/pdf`}
                           className="inline-flex items-center gap-1 text-body-sm font-medium text-primary hover:underline"
                         >
                           <IconDownload width={14} height={14} /> PDF
                         </a>
-                        <a href={`/api/cartao/notas/${n.id}/xml`} className="text-body-sm font-medium text-primary hover:underline">
+                        <a href={`/api/cartao/notas/${d.id}/xml`} className="text-body-sm font-medium text-primary hover:underline">
                           XML
                         </a>
                       </div>
-                    ) : (
-                      <span className="text-label text-on-surface-variant">aguardando XML</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {notas.length === 0 && (
+                    </td>
+                  </tr>
+                );
+              })}
+              {visiveis.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-body-sm text-on-surface-variant">
-                    Nenhuma nota encontrada com esses filtros.
+                  <td colSpan={18} className="px-4 py-8 text-center text-body-sm text-on-surface-variant">
+                    Nenhuma devolução encontrada com esses filtros.
                   </td>
                 </tr>
               )}

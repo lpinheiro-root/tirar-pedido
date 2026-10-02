@@ -41,3 +41,10 @@ export async function requireSuperAdmin() {
   if (!sessao.representante.super_admin) redirect('/admin/cartao');
   return sessao;
 }
+
+/** NF-e Recebidas / devoluções: super admin ou usuário com acesso liberado. */
+export async function requireDevolucoes() {
+  const sessao = await requireRepresentante('admin');
+  if (!sessao.representante.super_admin && !sessao.representante.acesso_devolucoes) redirect('/admin/cartao');
+  return sessao;
+}

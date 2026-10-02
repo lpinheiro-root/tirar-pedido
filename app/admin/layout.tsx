@@ -10,12 +10,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Nesta versão (Natuhair Finanças) o painel admin expõe só o módulo Cartão.
   const links = [
     { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
-    ...(representante.super_admin
-      ? [
-          { href: '/admin/nfe-recebidas', label: 'NF-e Recebidas', icon: <IconDocument /> },
-          { href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> },
-        ]
+    ...(representante.super_admin || representante.acesso_devolucoes
+      ? [{ href: '/admin/nfe-recebidas', label: 'NF-e Recebidas', icon: <IconDocument /> }]
       : []),
+    ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),
   ];
 
   return (

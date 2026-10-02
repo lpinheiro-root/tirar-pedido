@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { alternarAtivoUsuario, definirSenhaUsuario } from './actions';
+import { alternarAcessoDevolucoes, alternarAtivoUsuario, definirSenhaUsuario } from './actions';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/format';
 import type { Representante } from '@/types';
@@ -47,6 +47,27 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
           </span>
         </td>
         <td className="px-4 py-3">
+          {usuario.super_admin ? (
+            <span className="text-label text-on-surface-variant">tudo</span>
+          ) : (
+            <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={Boolean(usuario.acesso_devolucoes)}
+                disabled={pending}
+                onChange={(e) =>
+                  startTransition(async () => {
+                    const res = await alternarAcessoDevolucoes(usuario.id, e.target.checked);
+                    if (res.erro) setMensagem({ erro: res.erro });
+                  })
+                }
+              />
+              Devoluções
+            </label>
+          )}
+        </td>
+        <td className="px-4 py-3">
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"
@@ -78,7 +99,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
       </tr>
       {(trocandoSenha || mensagem) && (
         <tr className="border-t border-border-muted bg-surface-container-low/50">
-          <td colSpan={5} className="px-4 py-3">
+          <td colSpan={6} className="px-4 py-3">
             {trocandoSenha && (
               <form
                 className="flex flex-wrap items-center gap-3"

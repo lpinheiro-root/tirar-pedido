@@ -46,6 +46,8 @@ export interface Representante {
   ativo: boolean;
   /** Natuhair Cartão: vê os dados de todos e gerencia usuários */
   super_admin?: boolean;
+  /** pode ver e preencher o controle de devoluções (NF-e Recebidas) */
+  acesso_devolucoes?: boolean;
   criado_em: string;
 }
 

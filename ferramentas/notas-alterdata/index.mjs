@@ -89,21 +89,55 @@ function destinatarioCnpj(xml) {
   return dest?.[1].match(/<CNPJ>(\d{14})<\/CNPJ>/)?.[1] ?? null;
 }
 
-function lerNota(chave, xml) {
+// CFOPs de devolução (o cliente devolvendo mercadoria) e o equivalente na entrada
+const CFOP_DEVOLUCAO = /^[1-7](20[1-9]|21[0-1]|41[0-3]|503|553|55[56]|66[0-2]|91[89])$/;
+
+/** Devolução: finalidade 4 ou algum item com CFOP de devolução. */
+function ehDevolucao(xml) {
+  if (/<finNFe>4<\/finNFe>/.test(xml)) return true;
+  return [...xml.matchAll(/<CFOP>(\d{4})<\/CFOP>/g)].some((m) => CFOP_DEVOLUCAO.test(m[1]));
+}
+
+/** Nota de entrada emitida pela própria empresa para registrar a devolução de um cliente. */
+function ehEntradaDevolucaoPropria(xml) {
+  return /<tpNF>0<\/tpNF>/.test(xml) && ehDevolucao(xml);
+}
+
+/**
+ * `propria`: nota emitida pela empresa do grupo (entrada de devolução) — aí a
+ * empresa é o emitente e o cliente é o destinatário; nas demais, ao contrário.
+ */
+function lerNota(chave, xml, propria = false) {
   const doc = parser.parse(xml);
   const proc = doc.nfeProc ?? doc.procNFe ?? { NFe: doc.NFe };
   const inf = proc.NFe?.infNFe ?? {};
   // XML vindo de e-mail: a chave sai do protocolo ou do Id da nota
   chave = chave || String(proc.protNFe?.infProt?.chNFe ?? '') || String(inf['@Id'] ?? '').replace(/^NFe/, '');
   const emit = inf.emit ?? {};
+  const dest = inf.dest ?? {};
   const det = inf.det ?? [];
   const textos = [...det.map((d) => d.prod?.xPed), inf.infAdic?.infCpl, inf.compra?.xPed].map((t) => String(t ?? '')).join(' ');
+  const devolucao = ehDevolucao(xml);
+  const empresa = propria ? emit : dest;
+  const cliente = propria ? dest : emit;
+  // notas de venda citadas pela devolução (NFref → chaves)
+  const refs = [inf.ide?.NFref].flat().filter(Boolean);
+  const notasOrigem = refs.map((r) => String(r.refNFe ?? '')).filter((c) => /^\d{44}$/.test(c));
   return {
     chave,
     cnpj_emitente: String(emit.CNPJ ?? emit.CPF ?? ''),
     nome_emitente: String(emit.xNome ?? ''),
-    cnpj_destinatario: destinatarioCnpj(xml),
-    nome_destinatario: String(inf.dest?.xNome ?? '') || null,
+    // empresa do grupo envolvida (destinatária, ou emitente na entrada própria)
+    cnpj_destinatario: String(empresa.CNPJ ?? '') || null,
+    nome_destinatario: String(empresa.xNome ?? '') || null,
+    tipo: devolucao ? 'devolucao' : 'compra',
+    devolucao_origem: devolucao ? (propria ? 'propria' : 'cliente') : null,
+    cliente_nome: devolucao ? String(cliente.xNome ?? '') || null : null,
+    cliente_doc: devolucao ? String(cliente.CNPJ ?? cliente.CPF ?? '') || null : null,
+    cliente_uf: devolucao ? String((propria ? cliente.enderDest : cliente.enderEmit)?.UF ?? '') || null : null,
+    empresa_uf: String((propria ? empresa.enderEmit : empresa.enderDest)?.UF ?? '') || null,
+    notas_origem: devolucao ? notasOrigem : null,
+    transportadora: String(inf.transp?.transporta?.xNome ?? '') || null,
     data_emissao: String(inf.ide?.dhEmi ?? inf.ide?.dEmi ?? '') || null,
     valor_total: Number(inf.total?.ICMSTot?.vNF ?? 0),
     situacao: 'completa',
@@ -139,28 +173,35 @@ async function buscarAlterdata(supabase, estado, meses) {
     const empresas = new Set([...cadastro.map((r) => r.cnpj).filter((c) => c?.length === 14), ...EMPRESAS_EXTRAS]);
     if (!empresas.size) throw new Error('nenhuma empresa cadastrada no NF-Stock');
 
-    // raízes de CNPJ do grupo: notas emitidas por elas (transferências entre as
-    // empresas, matriz/filial) não entram — só notas de fornecedores de fora
-    const raizesGrupo = Array.from(new Set([...empresas].map((c) => c.slice(0, 8))));
+    // raízes de CNPJ do grupo (matriz e filiais): o CNPJ do emitente está na chave
+    const raizesGrupo = new Set([...empresas].map((c) => c.slice(0, 8)));
 
-    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda CT-e,
-    //    modelo 57) e sem as emitidas pelo próprio grupo (o CNPJ do emitente está na chave)
+    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda CT-e, modelo 57)
     const faixas = meses.flatMap((aamm) => UFS.map((uf) => `(id >= '${uf}${aamm}' and id < '${uf}${proximoAamm(aamm)}')`));
     const { rows } = await db.query(
-      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55' and substring(id, 7, 8) <> all($1::text[])`,
-      [raizesGrupo]
+      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55'`
     );
     const novas = rows.map((r) => r.id).filter((id) => !estado.vistos[id]).slice(0, MAX_POR_RODADA);
 
-    // 2. abre só as novas, em lotes, e fica com as destinadas às empresas
+    // 2. abre só as novas, em lotes, e fica com:
+    //    - notas de fora do grupo destinadas às empresas (compras e NFD de clientes);
+    //    - notas de entrada de devolução emitidas pela própria empresa.
+    //    Transferências e vendas entre as empresas do grupo não entram.
     for (let i = 0; i < novas.length; i += LOTE) {
       const lote = novas.slice(i, i + LOTE);
       const { rows: xmls } = await db.query('select id, xml from wfiscal.arquivos_xml_danfe where id = any($1::varchar[])', [lote]);
       const notas = [];
       for (const { id, xml } of xmls) {
         analisadas++;
-        if (empresas.has(destinatarioCnpj(xml ?? ''))) {
-          try { notas.push(lerNota(id, xml)); } catch (e) { console.log('nota ilegível', id, e.message); }
+        if (!xml) continue;
+        const doGrupo = raizesGrupo.has(id.slice(6, 14));
+        try {
+          if (!doGrupo && empresas.has(destinatarioCnpj(xml))) notas.push(lerNota(id, xml));
+          else if (doGrupo && ehEntradaDevolucaoPropria(xml)) notas.push(lerNota(id, xml, true));
+          // devolução entre empresas do grupo (ex.: transferência entre filiais)
+          else if (doGrupo && ehDevolucao(xml) && empresas.has(destinatarioCnpj(xml))) notas.push(lerNota(id, xml));
+        } catch (e) {
+          console.log('nota ilegível', id, e.message);
         }
       }
       if (notas.length) {
