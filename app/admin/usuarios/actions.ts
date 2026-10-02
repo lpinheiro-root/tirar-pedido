@@ -12,7 +12,7 @@ export interface UsuarioFormState {
 }
 
 /**
- * Cria um usuário do Natuhair Cartão com a senha escolhida pelo admin.
+ * Cria um usuário do Natuhair Finanças com a senha escolhida pelo admin.
  * Todo usuário do Cartão tem role admin (o módulo é restrito a admins), mas só
  * vê os próprios dados; o super admin é marcado direto no banco. Estado e
  * código SQL são campos do sistema de pedidos e ficam com valores fixos.

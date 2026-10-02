@@ -18,7 +18,7 @@ export default async function UsuariosPage() {
 
   return (
     <div>
-      <PageHeading title="Usuários" subtitle="Quem pode acessar o Natuhair Cartão." />
+      <PageHeading title="Usuários" subtitle="Quem pode acessar o Natuhair Finanças." />
 
       <Card className="mb-6">
         <CardHeader>

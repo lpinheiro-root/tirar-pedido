@@ -7,7 +7,7 @@ import { IconCreditCard, IconUsers } from '@/components/ui/Icons';
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
 
-  // Nesta versão (Natuhair Cartão) o painel admin expõe só o módulo Cartão.
+  // Nesta versão (Natuhair Finanças) o painel admin expõe só o módulo Cartão.
   const links = [
     { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
     ...(representante.super_admin
@@ -19,7 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-screen bg-surface">
       <Sidebar
         links={links}
-        titulo="Natuhair Cartão"
+        titulo="Natuhair Finanças"
         nome={representante.nome}
         subtitulo={representante.super_admin ? 'Administrador' : 'Usuário'}
         footer={<SidebarFooter contaHref="/admin/conta" />}

@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Natuhair Cartão',
+  title: 'Natuhair Finanças',
   description: 'Painel B2B de pedidos para representantes Natuhair',
 };
 
