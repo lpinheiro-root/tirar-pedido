@@ -21,6 +21,7 @@ export function CelulaEditavel({
   sugestao,
   opcoes,
   destaque = false,
+  abrirParaEsquerda = false,
 }: {
   chave: string;
   campo: string;
@@ -30,6 +31,8 @@ export function CelulaEditavel({
   sugestao?: string | null;
   opcoes: string[];
   destaque?: boolean;
+  /** abre a lista alinhada à direita (colunas no fim da tabela) */
+  abrirParaEsquerda?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [atual, setAtual] = useState(valor);
@@ -107,7 +110,7 @@ export function CelulaEditavel({
       </button>
 
       {aberto && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-md border border-border-muted bg-surface-container-lowest p-2 shadow-lg">
+        <div className={`absolute top-full z-30 ${abrirParaEsquerda ? 'right-0' : 'left-0'} mt-1 w-72 rounded-md border border-border-muted bg-surface-container-lowest p-2 shadow-lg`}>
           <p className="mb-1 px-1 text-label font-medium text-on-surface-variant">{titulo}</p>
 
           {modelo ? (

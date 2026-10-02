@@ -201,8 +201,7 @@ async function buscarAlterdata(supabase, estado, meses) {
         try {
           if (!doGrupo && empresas.has(destinatarioCnpj(xml))) notas.push(lerNota(id, xml));
           else if (doGrupo && ehEntradaDevolucaoPropria(xml)) notas.push(lerNota(id, xml, true));
-          // devolução entre empresas do grupo (ex.: transferência entre filiais)
-          else if (doGrupo && ehDevolucao(xml) && empresas.has(destinatarioCnpj(xml))) notas.push(lerNota(id, xml));
+          // devoluções entre empresas do grupo não entram: o controle é só de clientes
         } catch (e) {
           console.log('nota ilegível', id, e.message);
         }
