@@ -39,7 +39,7 @@ export default async function NfeRecebidasPage({
   const filtros = lerFiltros(searchParams);
   const pagina = Math.max(1, Number(searchParams.pagina) || 1);
 
-  const [{ data, count }, valores, robo, { data: destinatarios }] = await Promise.all([
+  const [{ data, count }, valores, robo, { data: destinatarios }, { data: maisRecente }] = await Promise.all([
     aplicarFiltros(
       supabase
         .from('cartao_notas')
@@ -59,6 +59,14 @@ export default async function NfeRecebidasPage({
     ),
     lerConfigNFe(createServiceRoleClient()),
     supabase.from('nfe_destinatarios').select('cnpj, nome, notas').order('nome'),
+    // emissão mais recente que já chegou (mostra o atraso da importação diária do Alterdata)
+    supabase
+      .from('cartao_notas')
+      .select('data_emissao')
+      .not('cnpj_destinatario', 'is', null)
+      .order('data_emissao', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   const empresas = (destinatarios ?? []) as { cnpj: string; nome: string | null; notas: number }[];
   const nomeEmpresa = (cnpj: string | null, nome?: string | null) =>
@@ -130,9 +138,20 @@ export default async function NfeRecebidasPage({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <p className="text-label text-on-surface-variant">
-            Robô: {robo?.ultima_consulta ? `última leitura ${formatDateTime(robo.ultima_consulta)}` : 'ainda não rodou'}
-          </p>
+          <div className="text-right text-label text-on-surface-variant">
+            <p>
+              Notas até:{' '}
+              <span className="font-medium text-on-surface">
+                {maisRecente?.data_emissao
+                  ? new Date(maisRecente.data_emissao).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                  : '—'}
+              </span>{' '}
+              (o Alterdata importa do NF-Stock 1x por dia)
+            </p>
+            <p>
+              Robô: {robo?.ultima_consulta ? `última leitura ${formatDateTime(robo.ultima_consulta)}` : 'ainda não rodou'}
+            </p>
+          </div>
           <a
             href={`/api/nfe-recebidas/exportar${filtrosParaUrl(filtros)}`}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
