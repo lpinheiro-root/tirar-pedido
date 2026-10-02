@@ -5,7 +5,7 @@
 //     atual e do anterior em wfiscal.arquivos_xml_danfe;
 //  2. abre só as chaves ainda não vistas (cache em estado.json) e fica com as
 //     notas cujo destinatário é uma das empresas cadastradas no NF-Stock
-//     (wfiscal.configuracao_nfstock) — inclusive transferências entre elas;
+//     (wfiscal.configuracao_nfstock), emitidas por fornecedores de fora do grupo;
 //  3. grava essas notas (XML comprimido) no Supabase e pede ao site para
 //     vincular as notas às compras do cartão.
 // O acesso ao Alterdata é feito com um usuário somente leitura.
@@ -139,10 +139,16 @@ async function buscarAlterdata(supabase, estado, meses) {
     const empresas = new Set([...cadastro.map((r) => r.cnpj).filter((c) => c?.length === 14), ...EMPRESAS_EXTRAS]);
     if (!empresas.size) throw new Error('nenhuma empresa cadastrada no NF-Stock');
 
-    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda CT-e, modelo 57)
+    // raízes de CNPJ do grupo: notas emitidas por elas (transferências entre as
+    // empresas, matriz/filial) não entram — só notas de fornecedores de fora
+    const raizesGrupo = Array.from(new Set([...empresas].map((c) => c.slice(0, 8))));
+
+    // 1. chaves do período pelo índice: só NF-e (modelo 55 — a tabela também guarda CT-e,
+    //    modelo 57) e sem as emitidas pelo próprio grupo (o CNPJ do emitente está na chave)
     const faixas = meses.flatMap((aamm) => UFS.map((uf) => `(id >= '${uf}${aamm}' and id < '${uf}${proximoAamm(aamm)}')`));
     const { rows } = await db.query(
-      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55'`
+      `select id from wfiscal.arquivos_xml_danfe where (${faixas.join(' or ')}) and length(id) = 44 and substring(id, 21, 2) = '55' and substring(id, 7, 8) <> all($1::text[])`,
+      [raizesGrupo]
     );
     const novas = rows.map((r) => r.id).filter((id) => !estado.vistos[id]).slice(0, MAX_POR_RODADA);
 
