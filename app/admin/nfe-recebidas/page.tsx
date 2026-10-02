@@ -5,7 +5,7 @@ import { PageHeading } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
 import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency, formatDateTime } from '@/lib/format';
-import { EMPRESAS_GRUPO, formatarCnpj } from '@/lib/empresas';
+import { formatarCnpj, nomeCurtoEmpresa } from '@/lib/empresas';
 import { aplicarFiltros, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
@@ -56,7 +56,7 @@ export default async function NfeRecebidasPage({
   ]);
   const empresas = (destinatarios ?? []) as { cnpj: string; nome: string | null; notas: number }[];
   const nomeEmpresa = (cnpj: string | null, nome?: string | null) =>
-    cnpj ? EMPRESAS_GRUPO[cnpj] ?? empresas.find((e) => e.cnpj === cnpj)?.nome ?? nome ?? formatarCnpj(cnpj) : '—';
+    cnpj ? nomeCurtoEmpresa(cnpj, empresas.find((e) => e.cnpj === cnpj)?.nome ?? nome) : '—';
   const notas = (data ?? []) as unknown as NotaLinha[];
   const total = count ?? 0;
   const soma = (valores ?? []).reduce((s, v) => s + Number(v.valor_total ?? 0), 0);

@@ -2,7 +2,7 @@ import { type NextRequest } from 'next/server';
 import { requireSuperAdmin } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { dataExcel, respostaExcel } from '@/lib/cartao/exportacao';
-import { EMPRESAS_GRUPO, formatarCnpj } from '@/lib/empresas';
+import { EMPRESAS_GRUPO, formatarCnpj, nomeCurtoEmpresa } from '@/lib/empresas';
 import { aplicarFiltros, lerFiltros } from '@/lib/nfeRecebidas';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       Emitente: n.nome_emitente ?? '',
       'CNPJ emitente': formatarCnpj(n.cnpj_emitente),
       Empresa: n.cnpj_destinatario
-        ? nomePadrao.get(n.cnpj_destinatario) ?? n.nome_destinatario ?? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? ''
+        ? nomeCurtoEmpresa(n.cnpj_destinatario, nomePadrao.get(n.cnpj_destinatario) ?? n.nome_destinatario)
         : '',
       'CNPJ empresa': formatarCnpj(n.cnpj_destinatario),
       Valor: n.valor_total != null ? Number(n.valor_total) : null,
