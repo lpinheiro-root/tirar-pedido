@@ -2,12 +2,11 @@ import Link from 'next/link';
 import { requireRepresentante } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
-import { BuscarAgoraButton, CertificadoForm } from './NotasForms';
 
 interface NotaLista {
   id: string;
@@ -51,56 +50,38 @@ export default async function NotasPage({ searchParams }: { searchParams: { filt
   const { data } = await query;
   const notas = (data ?? []) as unknown as NotaLista[];
 
-  const config = superAdmin ? await lerConfigNFe(createServiceRoleClient()) : null;
-  const certVencendo =
-    config?.cert_validade && Date.parse(config.cert_validade) - Date.now() < 30 * 86_400_000;
+  // status gravado pelo robô de notas (ferramentas/notas-alterdata) a cada rodada
+  const robo = superAdmin ? await lerConfigNFe(createServiceRoleClient()) : null;
+  const roboAtrasado = !robo?.ultima_consulta || Date.now() - Date.parse(robo.ultima_consulta) > 2 * 3_600_000;
 
   return (
     <div>
       <PageHeading
         title="Notas fiscais"
-        subtitle="NF-e emitidas contra o CNPJ da empresa, baixadas da SEFAZ e vinculadas às compras."
+        subtitle="NF-e recebidas pela Biosense, Veneza e Roma, trazidas do Alterdata (NF-Stock) e vinculadas às compras."
       />
 
       {superAdmin && (
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+        <Card className="mb-6 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Conexão com a SEFAZ</CardTitle>
-              {config?.cnpj ? (
-                <div className="mt-1 space-y-0.5 text-body-sm text-on-surface-variant">
-                  <p>
-                    {config.cert_titular} · CNPJ {cnpjFormatado(config.cnpj)} · {config.uf}
-                  </p>
-                  <p className={certVencendo ? 'font-medium text-error' : ''}>
-                    Certificado válido até{' '}
-                    {config.cert_validade ? new Date(config.cert_validade).toLocaleDateString('pt-BR') : '—'}
-                    {certVencendo ? ' — renove o certificado' : ''}
-                  </p>
-                  <p>
-                    Última consulta: {config.ultima_consulta ? formatDateTime(config.ultima_consulta) : 'nunca'}
-                    {config.proxima_consulta && Date.parse(config.proxima_consulta) > Date.now()
-                      ? ` · próxima permitida: ${formatDateTime(config.proxima_consulta)}`
-                      : ''}
-                  </p>
-                  {config.ultimo_status && <p className="text-label">{config.ultimo_status}</p>}
-                </div>
-              ) : (
-                <p className="mt-1 text-body-sm text-on-surface-variant">
-                  Envie o certificado digital A1 (e-CNPJ) para começar. A busca roda sozinha a cada 2 horas.
-                </p>
-              )}
+              <p className="text-h2 text-on-surface">Robô de notas (Alterdata)</p>
+              <p className="mt-1 text-body-sm text-on-surface-variant">
+                Roda a cada 30 minutos no servidor interno e envia as notas novas destinadas às empresas.
+              </p>
             </div>
-            {config?.cnpj && <BuscarAgoraButton />}
-          </CardHeader>
-          <CardContent>
-            <CertificadoForm ufAtual={config?.uf ?? null} />
-            <p className="mt-3 text-label text-on-surface-variant">
-              O arquivo fica guardado em área privada e só o servidor tem acesso. A Ciência da Operação é registrada
-              apenas nas notas vinculadas a compras do cartão (para liberar o XML completo); as demais notas do CNPJ
-              não são manifestadas.
-            </p>
-          </CardContent>
+            <span
+              className={`inline-flex rounded-sm px-2 py-1 text-label font-medium ${
+                roboAtrasado ? 'bg-error-container text-error-on-container' : 'bg-green-100 text-green-700'
+              }`}
+            >
+              {roboAtrasado ? 'Sem rodar há mais de 2h' : 'Funcionando'}
+            </span>
+          </div>
+          <p className="mt-3 text-body-sm text-on-surface-variant">
+            Última rodada: {robo?.ultima_consulta ? formatDateTime(robo.ultima_consulta) : 'nunca'}
+          </p>
+          {robo?.ultimo_status && <p className="text-label text-on-surface-variant">{robo.ultimo_status}</p>}
         </Card>
       )}
 

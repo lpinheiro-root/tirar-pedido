@@ -21,3 +21,9 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# credenciais locais das ferramentas (nunca versionar)
+ferramentas/**/*.env
+ferramentas/**/.env
+ferramentas/**/estado.json
+ferramentas/**/node_modules/

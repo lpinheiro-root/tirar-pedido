@@ -1,0 +1,16 @@
+{
+  "name": "natuhair-notas-alterdata",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Robô que leva as NF-e recebidas (Alterdata Pack / NF-Stock) para o Natuhair Finanças",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "fast-xml-parser": "^5.11.2",
+    "pg": "^8.13.0"
+  }
+}
