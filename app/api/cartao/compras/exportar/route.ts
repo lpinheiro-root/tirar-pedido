@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 import { dataExcel, respostaExcel } from '@/lib/cartao/exportacao';
 import { mesAtual, rotuloMes, situacaoNoMes, textoSituacao } from '@/lib/cartao/parcelas';
+import { buscarTodas } from '@/lib/supabasePaginado';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,13 +20,15 @@ export async function GET(request: NextRequest) {
   const mes = /^\d{4}-\d{2}$/.test(mesParam) ? mesParam : mesAtual();
   const soMes = params.get('so_mes') === '1';
 
-  let query = supabase
-    .from('cartao_compras')
-    .select('*, cartao_lancamentos(id, parcela_atual, cartao_faturas(vencimento)), cartao_notas(chave, situacao)')
-    .order('data', { ascending: false })
-    .limit(10000);
-  if (origem && origem !== 'todas') query = query.eq('origem', origem);
-  const { data } = await query;
+  const data = await buscarTodas((de, ate) => {
+    let query = supabase
+      .from('cartao_compras')
+      .select('*, cartao_lancamentos(id, parcela_atual, cartao_faturas(vencimento)), cartao_notas(chave, situacao)')
+      .order('data', { ascending: false })
+      .order('id');
+    if (origem && origem !== 'todas') query = query.eq('origem', origem);
+    return query.range(de, ate);
+  });
 
   const compras = (data ?? []).map((c) => {
     const lancs = (c.cartao_lancamentos ?? []) as {

@@ -9,6 +9,7 @@ import {
   type Certificado,
   type DadosNota,
 } from './sefaz';
+import { buscarTodas } from '@/lib/supabasePaginado';
 
 /**
  * Rotina de notas fiscais (roda agendada e pelo botão "Buscar agora" do TI):
@@ -144,19 +145,30 @@ const DIA_MS = 86_400_000;
 
 export async function vincularNotas(service: Service): Promise<number> {
   const desde = new Date(Date.now() - 200 * DIA_MS).toISOString();
-  const [{ data: notas }, { data: compras }] = await Promise.all([
-    service
-      .from('cartao_notas')
-      .select('id, data_emissao, valor_total, pedidos_ref')
-      .is('compra_id', null)
-      .neq('situacao', 'cancelada')
-      .gte('data_emissao', desde),
-    service
-      .from('cartao_compras')
-      .select('id, data, valor_total, pedidos, pedido_externo')
-      .gte('data', desde.slice(0, 10)),
+  // todas as linhas (o Supabase devolve no máximo 1.000 por consulta)
+  const [notas, compras] = await Promise.all([
+    buscarTodas<{ id: string; data_emissao: string | null; valor_total: number | null; pedidos_ref: string[] | null }>(
+      (de, ate) =>
+        service
+          .from('cartao_notas')
+          .select('id, data_emissao, valor_total, pedidos_ref')
+          .is('compra_id', null)
+          .neq('situacao', 'cancelada')
+          .gte('data_emissao', desde)
+          .order('id')
+          .range(de, ate)
+    ),
+    buscarTodas<{ id: string; data: string; valor_total: number; pedidos: string[] | null; pedido_externo: string | null }>(
+      (de, ate) =>
+        service
+          .from('cartao_compras')
+          .select('id, data, valor_total, pedidos, pedido_externo')
+          .gte('data', desde.slice(0, 10))
+          .order('id')
+          .range(de, ate)
+    ),
   ]);
-  if (!notas?.length || !compras?.length) return 0;
+  if (!notas.length || !compras.length) return 0;
 
   let vinculadas = 0;
   for (const nota of notas) {

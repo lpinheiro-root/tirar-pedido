@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { conciliar, chaveParcela } from './conciliacao';
+import { buscarTodas } from '@/lib/supabasePaginado';
 
 /** Aceita o client do usuário (RLS) ou o service role (rotina agendada). */
 export type Supabase = SupabaseClient;
@@ -88,13 +89,16 @@ export async function conciliarFatura(supabase: Supabase, faturaId: string): Pro
 
 /** Depois de novas compras entrarem, tenta conciliar as faturas com pendências. */
 export async function conciliarPendentes(supabase: Supabase): Promise<number> {
-  const { data } = await supabase
-    .from('cartao_lancamentos')
-    .select('fatura_id')
-    .eq('tipo', 'compra')
-    .eq('status', 'pendente')
-    .limit(5000);
-  const faturas = Array.from(new Set((data ?? []).map((l) => l.fatura_id as string)));
+  const data = await buscarTodas<{ fatura_id: string }>((de, ate) =>
+    supabase
+      .from('cartao_lancamentos')
+      .select('fatura_id')
+      .eq('tipo', 'compra')
+      .eq('status', 'pendente')
+      .order('id')
+      .range(de, ate)
+  );
+  const faturas = Array.from(new Set(data.map((l) => l.fatura_id)));
   let total = 0;
   for (const id of faturas) total += await conciliarFatura(supabase, id);
   return total;

@@ -9,6 +9,7 @@ import { formatarCnpj, nomeCurtoEmpresa } from '@/lib/empresas';
 import { aplicarFiltros, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
+import { buscarTodas } from '@/lib/supabasePaginado';
 
 const POR_PAGINA = 100;
 
@@ -38,7 +39,7 @@ export default async function NfeRecebidasPage({
   const filtros = lerFiltros(searchParams);
   const pagina = Math.max(1, Number(searchParams.pagina) || 1);
 
-  const [{ data, count }, { data: valores }, robo, { data: destinatarios }] = await Promise.all([
+  const [{ data, count }, valores, robo, { data: destinatarios }] = await Promise.all([
     aplicarFiltros(
       supabase
         .from('cartao_notas')
@@ -50,7 +51,12 @@ export default async function NfeRecebidasPage({
     )
       .order('data_emissao', { ascending: false })
       .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1),
-    aplicarFiltros(supabase.from('cartao_notas').select('valor_total').neq('situacao', 'cancelada'), filtros).limit(20000),
+    // soma de todas as notas do filtro (o Supabase devolve no máximo 1.000 por consulta)
+    buscarTodas<{ valor_total: number | null }>((de, ate) =>
+      aplicarFiltros(supabase.from('cartao_notas').select('valor_total').neq('situacao', 'cancelada'), filtros)
+        .order('id')
+        .range(de, ate)
+    ),
     lerConfigNFe(createServiceRoleClient()),
     supabase.from('nfe_destinatarios').select('cnpj, nome, notas').order('nome'),
   ]);

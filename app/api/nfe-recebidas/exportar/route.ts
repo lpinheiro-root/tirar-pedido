@@ -5,6 +5,7 @@ import { dataExcel, respostaExcel } from '@/lib/cartao/exportacao';
 import { EMPRESAS_GRUPO, formatarCnpj, nomeCurtoEmpresa } from '@/lib/empresas';
 import { aplicarFiltros, lerFiltros } from '@/lib/nfeRecebidas';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
+import { buscarTodas } from '@/lib/supabasePaginado';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,18 +16,21 @@ export async function GET(request: NextRequest) {
   const supabase = createClient();
   const { data: destinatarios } = await supabase.from('nfe_destinatarios').select('cnpj, nome');
   const nomePadrao = new Map((destinatarios ?? []).map((d) => [d.cnpj as string, d.nome as string]));
-  const { data } = await aplicarFiltros(
-    supabase
-      .from('cartao_notas')
-      .select(
-        'chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)'
-      ),
-    filtros
-  )
-    .order('data_emissao', { ascending: false })
-    .limit(20000);
+  const data = await buscarTodas((de, ate) =>
+    aplicarFiltros(
+      supabase
+        .from('cartao_notas')
+        .select(
+          'chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)'
+        ),
+      filtros
+    )
+      .order('data_emissao', { ascending: false })
+      .order('chave')
+      .range(de, ate)
+  );
 
-  const linhas = (data ?? []).map((n) => {
+  const linhas = data.map((n) => {
     const c = n.cartao_compras as unknown as { descricao: string | null; origem: string; data: string } | null;
     return {
       Emissão: dataExcel(n.data_emissao),
