@@ -2,7 +2,7 @@ import { requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
-import { IconCreditCard, IconUsers } from '@/components/ui/Icons';
+import { IconCreditCard, IconDocument, IconUsers } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
@@ -11,7 +11,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const links = [
     { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
     ...(representante.super_admin
-      ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }]
+      ? [
+          { href: '/admin/nfe-recebidas', label: 'NF-e Recebidas', icon: <IconDocument /> },
+          { href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> },
+        ]
       : []),
   ];
 

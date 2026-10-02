@@ -102,6 +102,7 @@ function lerNota(chave, xml) {
     chave,
     cnpj_emitente: String(emit.CNPJ ?? emit.CPF ?? ''),
     nome_emitente: String(emit.xNome ?? ''),
+    cnpj_destinatario: destinatarioCnpj(xml),
     data_emissao: String(inf.ide?.dhEmi ?? inf.ide?.dEmi ?? '') || null,
     valor_total: Number(inf.total?.ICMSTot?.vNF ?? 0),
     situacao: 'completa',

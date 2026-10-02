@@ -1,10 +1,7 @@
 import { IconDownload } from '@/components/ui/Icons';
+import { EMPRESAS_GRUPO } from '@/lib/empresas';
 
-const EMPRESAS: Record<string, string> = {
-  '30066989000105': 'Biosense',
-  '34467748000110': 'Veneza',
-  '29323477000190': 'Roma',
-};
+const EMPRESAS = EMPRESAS_GRUPO;
 
 const DIA_MS = 86_400_000;
 
