@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('cartao_compras')
-    .select('*, cartao_lancamentos(id, parcela_atual, cartao_faturas(vencimento))')
+    .select('*, cartao_lancamentos(id, parcela_atual, cartao_faturas(vencimento)), cartao_notas(chave, situacao)')
     .order('data', { ascending: false })
     .limit(10000);
   if (origem && origem !== 'todas') query = query.eq('origem', origem);
@@ -74,6 +74,15 @@ export async function GET(request: NextRequest) {
       'Parcela confirmada': s.estado === 'no_mes' ? (s.confirmado ? 'Sim (fatura)' : 'Estimada') : '',
       'Na fatura':
         c.encontradas === 0 ? 'Não localizada' : parcelas > 1 ? `${c.encontradas}/${parcelas} parcelas` : 'Conciliada',
+      'Nota fiscal': ((c.cartao_notas ?? []) as { chave: string; situacao: string }[]).some((n) => n.situacao === 'completa')
+        ? 'Sim'
+        : c.faturamento === 'cpf'
+          ? 'Compra no CPF (sem nota)'
+          : 'Pendente',
+      'Chave da nota': ((c.cartao_notas ?? []) as { chave: string; situacao: string }[])
+        .filter((n) => n.situacao === 'completa')
+        .map((n) => n.chave)
+        .join(', '),
       Fonte: FONTE_LABEL[c.fonte] ?? c.fonte,
     };
   });

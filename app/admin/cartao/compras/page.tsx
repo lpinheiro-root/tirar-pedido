@@ -9,6 +9,7 @@ import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 import { mesAtual, rotuloMes, situacaoNoMes, textoSituacao } from '@/lib/cartao/parcelas';
 import { excluirCompra } from '../actions';
 import { ImportarComprasForm, NovaCompraForm } from './ComprasForms';
+import { NotaFiscalCelula } from './NotaFiscalCelula';
 
 interface CompraLista {
   id: string;
@@ -23,6 +24,8 @@ interface CompraLista {
   valor_parcela: number | null;
   fonte: string;
   usuario_id: string;
+  faturamento: 'cpf' | 'cnpj' | null;
+  faturamento_cnpj: string | null;
   cartao_lancamentos: {
     id: string;
     fatura_id: string;
@@ -184,6 +187,7 @@ export default async function ComprasPage({
                 <th className="px-4 py-3 text-right font-medium">Valor</th>
                 <th className="px-4 py-3 font-medium">Parcela em {rotuloMes(mes)}</th>
                 <th className="px-4 py-3 font-medium">Na fatura</th>
+                <th className="px-4 py-3 font-medium">Nota fiscal</th>
                 <th className="px-4 py-3 text-right font-medium">Ações</th>
               </tr>
             </thead>
@@ -254,18 +258,15 @@ export default async function ComprasPage({
                         </Link>
                       )}
                     </td>
+                    <td className="px-4 py-3">
+                      <NotaFiscalCelula
+                        notas={c.cartao_notas}
+                        faturamento={c.faturamento}
+                        faturamentoCnpj={c.faturamento_cnpj}
+                        data={c.data}
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {c.cartao_notas
-                        .filter((n) => n.situacao === 'completa')
-                        .map((n) => (
-                          <a
-                            key={n.id}
-                            href={`/admin/cartao/notas/${n.id}/danfe`}
-                            className="mb-1 block text-label font-medium text-primary hover:underline"
-                          >
-                            Nota fiscal
-                          </a>
-                        ))}
                       <form action={excluirCompra}>
                         <input type="hidden" name="compraId" value={c.id} />
                         <button type="submit" className="text-label font-medium text-on-surface-variant hover:text-error">
@@ -278,7 +279,7 @@ export default async function ComprasPage({
               })}
               {compras.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-body-sm text-on-surface-variant">
+                  <td colSpan={8} className="px-4 py-8 text-center text-body-sm text-on-surface-variant">
                     {soMes ? `Nenhuma parcela vence em ${rotuloMes(mes)}.` : 'Nenhuma compra registrada.'}
                   </td>
                 </tr>

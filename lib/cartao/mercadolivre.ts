@@ -215,3 +215,31 @@ export async function buscarCompras(integracao: IntegracaoML, desde: string): Pr
     fonte: 'api',
   }));
 }
+
+export interface Faturamento {
+  faturamento: 'cpf' | 'cnpj' | null;
+  faturamento_cnpj: string | null;
+}
+
+/**
+ * Documento em que o pedido foi faturado (dados de faturamento do comprador).
+ * Do CPF guardamos só o tipo — o número não sai daqui.
+ */
+export async function faturamentoDoPedido(integracao: IntegracaoML, pedido: string): Promise<Faturamento> {
+  const token = await tokenValido(integracao);
+  const res = await fetch(`${API}/orders/${pedido}/billing_info`, {
+    headers: { Authorization: `Bearer ${token}`, 'x-version': '2' },
+    cache: 'no-store',
+  });
+  if (!res.ok) return { faturamento: null, faturamento_cnpj: null };
+  const j = (await res.json()) as {
+    buyer?: { billing_info?: { identification?: { type?: string; number?: string } } };
+    billing_info?: { doc_type?: string; doc_number?: string };
+  };
+  const ident = j.buyer?.billing_info?.identification;
+  const tipo = String(ident?.type ?? j.billing_info?.doc_type ?? '').toUpperCase();
+  const numero = String(ident?.number ?? j.billing_info?.doc_number ?? '').replace(/\D/g, '');
+  if (tipo === 'CNPJ' || numero.length === 14) return { faturamento: 'cnpj', faturamento_cnpj: numero || null };
+  if (tipo === 'CPF' || numero.length === 11) return { faturamento: 'cpf', faturamento_cnpj: null };
+  return { faturamento: null, faturamento_cnpj: null };
+}

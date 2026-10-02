@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { buscarCompras, type IntegracaoML } from './mercadolivre';
+import { buscarCompras, faturamentoDoPedido, type IntegracaoML } from './mercadolivre';
 
 type ContaML = IntegracaoML & { usuario_id: string };
 
@@ -26,6 +26,7 @@ export async function sincronizarContasML(
           .upsert(compras, { onConflict: 'usuario_id,origem,pedido_externo' });
         if (error) throw new Error(error.message);
       }
+      await completarFaturamento(service, conta);
       await service
         .from('cartao_integracoes')
         .update({ ultima_sincronizacao: new Date().toISOString() })
@@ -44,4 +45,28 @@ export async function contasML(usuarioId?: string): Promise<ContaML[]> {
   if (usuarioId) consulta = consulta.eq('usuario_id', usuarioId);
   const { data } = await consulta;
   return (data ?? []) as ContaML[];
+}
+
+/**
+ * Descobre se cada compra nova foi faturada no CPF ou no CNPJ (uma consulta por
+ * pedido, só para as que ainda não têm essa informação — no máximo 40 por rodada).
+ */
+async function completarFaturamento(service: ReturnType<typeof createServiceRoleClient>, conta: ContaML) {
+  const { data: pendentes } = await service
+    .from('cartao_compras')
+    .select('id, pedidos')
+    .eq('usuario_id', conta.usuario_id)
+    .eq('conta', conta.apelido)
+    .eq('origem', 'mercadolivre')
+    .is('faturamento', null)
+    .not('pedidos', 'is', null)
+    .order('data', { ascending: false })
+    .limit(40);
+  for (const c of pendentes ?? []) {
+    const pedidos = (c.pedidos as string[]) ?? [];
+    const pedido = pedidos.find((p) => p.startsWith('2000')) ?? pedidos[0];
+    if (!pedido) continue;
+    const fat = await faturamentoDoPedido(conta, pedido);
+    if (fat.faturamento) await service.from('cartao_compras').update(fat).eq('id', c.id);
+  }
 }

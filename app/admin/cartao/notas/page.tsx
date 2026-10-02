@@ -161,6 +161,12 @@ export default async function NotasPage({ searchParams }: { searchParams: { filt
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     {n.situacao === 'completa' ? (
                       <div className="flex justify-end gap-3">
+                        <a
+                          href={`/api/cartao/notas/${n.id}/pdf`}
+                          className="inline-flex items-center gap-1 text-body-sm font-medium text-primary hover:underline"
+                        >
+                          <IconDownload width={14} height={14} /> PDF
+                        </a>
                         <Link
                           href={`/admin/cartao/notas/${n.id}/danfe`}
                           className="text-body-sm font-medium text-primary hover:underline"
