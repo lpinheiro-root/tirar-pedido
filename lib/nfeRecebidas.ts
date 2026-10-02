@@ -70,7 +70,8 @@ const COLUNAS =
  */
 export async function buscarDevolucoes(supabase: SupabaseClient, f: FiltrosNFe): Promise<Devolucao[]> {
   const linhas = await buscarTodas<Devolucao>((de, ate) => {
-    let q = supabase.from('cartao_notas').select(COLUNAS).eq('tipo', 'devolucao');
+    // só NFD emitidas pelos clientes (as entradas próprias não entram no controle da equipe)
+    let q = supabase.from('cartao_notas').select(COLUNAS).eq('tipo', 'devolucao').eq('devolucao_origem', 'cliente');
     if (f.empresa) q = q.eq('cnpj_destinatario', f.empresa);
     if (f.mes) {
       const [ano, mes] = f.mes.split('-').map(Number);

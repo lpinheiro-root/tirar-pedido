@@ -7,7 +7,9 @@ import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { formatarCnpj } from '@/lib/empresas';
 import { buscarDevolucoes, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
-import { CAMPOS, nomeEmpresaPlanilha, numeroDaChave, ocorrenciaEncerrada } from '@/lib/devolucoes';
+import { CAMPOS, nomeEmpresaPlanilha, numeroDaChave, ocorrenciaEncerrada, opcoesDoCampo, type CampoAcompanhamento } from '@/lib/devolucoes';
+import { buscarTodas } from '@/lib/supabasePaginado';
+import type { Acompanhamento } from '@/lib/nfeRecebidas';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
 import { CelulaEditavel } from './CelulaEditavel';
 
@@ -28,7 +30,7 @@ export default async function NfeRecebidasPage({
   const filtros = lerFiltros(searchParams);
   const pagina = Math.max(1, Number(searchParams.pagina) || 1);
 
-  const [devolucoes, todasEmpresas, robo, { data: maisRecente }] = await Promise.all([
+  const [devolucoes, todasEmpresas, robo, { data: maisRecente }, respostas] = await Promise.all([
     buscarDevolucoes(supabase, filtros),
     // unidades do grupo que já receberam devoluções (para o filtro e os nomes curtos)
     buscarDevolucoes(supabase, { empresa: '', mes: '', busca: '', situacao: '' }),
@@ -40,7 +42,18 @@ export default async function NfeRecebidasPage({
       .order('data_emissao', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // respostas já usadas (planilhas importadas + sistema) viram as opções de cada campo
+    buscarTodas<Acompanhamento>((de, ate) =>
+      supabase
+        .from('devolucoes_acompanhamento')
+        .select('motivo, volta_fabrica, retorno, transportadora, transportadora_debitada, pagamento_cliente, pagamento_feito, status, nf_fiscal')
+        .order('chave')
+        .range(de, ate)
+    ),
   ]);
+  const opcoes = Object.fromEntries(
+    CAMPOS.map((c) => [c.campo, opcoesDoCampo(c.campo, respostas.map((r) => r[c.campo]))])
+  ) as Record<CampoAcompanhamento, string[]>;
 
   const unidades = Array.from(
     new Map(
@@ -206,7 +219,7 @@ export default async function NfeRecebidasPage({
                           chave={d.chave}
                           campo={c.campo}
                           titulo={c.titulo}
-                          opcoes={c.opcoes}
+                          opcoes={opcoes[c.campo]}
                           valor={a?.[c.campo] ?? null}
                           sugestao={c.campo === 'transportadora' ? d.transportadora : null}
                         />
@@ -219,7 +232,7 @@ export default async function NfeRecebidasPage({
                           chave={d.chave}
                           campo={campo}
                           titulo={opcoesDe(campo).titulo}
-                          opcoes={opcoesDe(campo).opcoes}
+                          opcoes={opcoes[campo]}
                           valor={a?.[campo] ?? null}
                           destaque
                         />

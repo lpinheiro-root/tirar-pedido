@@ -219,3 +219,55 @@ export function nomeEmpresaPlanilha(
 export function numeroDaChave(chave: string): string {
   return String(Number(chave.slice(25, 34)));
 }
+
+/**
+ * Transforma uma resposta já usada em opção reaproveitável: a data vira {data}
+ * e o número (NF, título…) vira {num}. Ex.: "SOLICITADO DIA 23/07/2026" →
+ * "SOLICITADO DIA {data}"; "NF DE RETORNO 35311 (04/08/2026)" →
+ * "NF DE RETORNO {num} ({data})". Respostas com mais de uma data ou número
+ * ficam como estão (são casos específicos).
+ */
+export function modeloDaResposta(resposta: string): string {
+  const t = resposta.toUpperCase().replace(/\s+/g, ' ').trim();
+  const datas = t.match(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g) ?? [];
+  const semDatas = t.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '');
+  const numeros = semDatas.match(/\b\d{3,}\b/g) ?? [];
+  if (datas.length > 1 || numeros.length > 1) return t;
+  let modelo = t;
+  if (datas.length === 1) modelo = modelo.replace(datas[0], '{data}');
+  if (numeros.length === 1) modelo = modelo.replace(new RegExp('\\b' + numeros[0] + '\\b'), '{num}');
+  return modelo;
+}
+
+/**
+ * Opções de um campo: respostas já usadas (planilhas importadas + sistema),
+ * das mais usadas para as menos, e depois a lista base que ainda não apareceu.
+ */
+export function opcoesDoCampo(campo: CampoAcompanhamento, respostas: (string | null | undefined)[], limite = 30): string[] {
+  // agrupa variações de pontuação/acento ("ENCERRADA." e "ENCERRADA", "ANÁLISADA" e
+  // "ANALISADA") e mostra a grafia mais usada de cada grupo
+  const chave = (m: string) =>
+    m
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Z0-9{}]/g, '');
+  const grupos = new Map<string, { total: number; grafias: Map<string, number> }>();
+  for (const r of respostas) {
+    if (!r?.trim()) continue;
+    const m = modeloDaResposta(r);
+    const g = grupos.get(chave(m)) ?? { total: 0, grafias: new Map() };
+    g.total++;
+    g.grafias.set(m, (g.grafias.get(m) ?? 0) + 1);
+    grupos.set(chave(m), g);
+  }
+  // respostas usadas uma vez só costumam ser casos específicos: ficam de fora da lista
+  const usadas = Array.from(grupos.values())
+    .filter((g) => g.total >= 2)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limite)
+    .map((g) => Array.from(g.grafias.entries()).sort((a, b) => b[1] - a[1])[0][0]);
+  const jaTem = new Set(usadas.map(chave));
+  const base = CAMPOS.find((c) => c.campo === campo)?.opcoes ?? [];
+  return [...usadas, ...base.filter((o) => !jaTem.has(chave(o.toUpperCase())))];
+}
