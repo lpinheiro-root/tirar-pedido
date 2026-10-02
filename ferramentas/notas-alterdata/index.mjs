@@ -1,4 +1,4 @@
-// Robô de notas fiscais: Alterdata Pack (NF-Stock) → Natuhair Finanças.
+// Robô de notas fiscais: Alterdata Pack (NF-Stock) e caixas de e-mail → Natuhair Finanças.
 //
 // Roda dentro da rede (servidor 10.0.255.126, PM2, a cada 30 min):
 //  1. lista pelo índice (sem abrir XML) as chaves das NF-e do mês atual e do
@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { XMLParser } from 'fast-xml-parser';
+import { caixasConfiguradas, xmlsDaCaixa } from './email.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const ARQ_ESTADO = path.join(DIR, 'estado.json');
@@ -38,10 +39,12 @@ const LOTE = 200;
 const MAX_POR_RODADA = Number(env.MAX_POR_RODADA ?? 3000);
 const UFS = ['11', '12', '13', '14', '15', '16', '17', '21', '22', '23', '24', '25', '26', '27', '28', '29', '31', '32', '33', '35', '41', '42', '43', '50', '51', '52', '53'];
 
-for (const k of ['ALTERDATA_HOST', 'ALTERDATA_BANCO', 'ALTERDATA_USUARIO', 'ALTERDATA_SENHA', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
   if (!env[k]) throw new Error(`Configuração ausente: ${k}`);
 }
-if (!EMPRESAS.length) throw new Error('Configuração ausente: EMPRESAS_CNPJ');
+const USA_ALTERDATA = Boolean(env.ALTERDATA_HOST && env.ALTERDATA_SENHA);
+if (USA_ALTERDATA && !EMPRESAS.length) throw new Error('Configuração ausente: EMPRESAS_CNPJ');
+const CAIXAS = caixasConfiguradas(env);
 
 /** Meses (AAMM, como na chave de acesso) do mês atual e do anterior, no horário de Brasília. */
 function mesesRecentes() {
@@ -88,8 +91,10 @@ function destinatarioCnpj(xml) {
 
 function lerNota(chave, xml) {
   const doc = parser.parse(xml);
-  const proc = doc.nfeProc ?? doc.procNFe ?? {};
+  const proc = doc.nfeProc ?? doc.procNFe ?? { NFe: doc.NFe };
   const inf = proc.NFe?.infNFe ?? {};
+  // XML vindo de e-mail: a chave sai do protocolo ou do Id da nota
+  chave = chave || String(proc.protNFe?.infProt?.chNFe ?? '') || String(inf['@Id'] ?? '').replace(/^NFe/, '');
   const emit = inf.emit ?? {};
   const det = inf.det ?? [];
   const textos = [...det.map((d) => d.prod?.xPed), inf.infAdic?.infCpl, inf.compra?.xPed].map((t) => String(t ?? '')).join(' ');
@@ -106,12 +111,8 @@ function lerNota(chave, xml) {
   };
 }
 
-// ── rodada ──
-async function main() {
-  const inicio = Date.now();
-  const meses = mesesRecentes();
-  const estado = lerEstado(meses);
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+// ── fonte 1: Alterdata (NF-Stock) ──
+async function buscarAlterdata(supabase, estado, meses) {
   const db = new pg.Client({
     host: env.ALTERDATA_HOST,
     port: Number(env.ALTERDATA_PORTA ?? 5432),
@@ -157,19 +158,71 @@ async function main() {
   } finally {
     await db.end();
   }
+  return `Alterdata: ${analisadas} nova(s) analisada(s), ${enviadas} das empresas`;
+}
 
-  // 3. vincula as notas às compras
-  let vinculo = '';
+// ── fonte 2: caixas de e-mail (notas no CPF e as que o vendedor manda por e-mail) ──
+async function buscarEmails(supabase, estado) {
+  const partes = [];
+  estado.email ??= {};
+  for (const caixa of CAIXAS) {
+    try {
+      const estadoCaixa = (estado.email[caixa.usuario] ??= {});
+      const xmls = await xmlsDaCaixa(caixa, estadoCaixa);
+      const porChave = new Map();
+      for (const xml of xmls) {
+        try {
+          const nota = lerNota(null, xml);
+          if (/^\d{44}$/.test(nota.chave)) porChave.set(nota.chave, nota);
+        } catch { /* XML que não é NF-e */ }
+      }
+      if (porChave.size) {
+        // a mesma nota pode já ter vindo pelo Alterdata: não sobrescreve
+        const { error } = await supabase
+          .from('cartao_notas')
+          .upsert([...porChave.values()], { onConflict: 'chave', ignoreDuplicates: true });
+        if (error) throw new Error(`Supabase: ${error.message}`);
+      }
+      salvarEstado(estado);
+      partes.push(`${caixa.usuario}: ${porChave.size} nota(s)`);
+    } catch (e) {
+      partes.push(`${caixa.usuario}: ERRO ${e.message}`);
+    }
+  }
+  return partes.length ? `E-mail: ${partes.join(', ')}` : '';
+}
+
+// ── rodada ──
+async function main() {
+  const inicio = Date.now();
+  const meses = mesesRecentes();
+  const estado = lerEstado(meses);
+  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+  // as fontes são independentes: a falha de uma não impede a outra
+  const partes = [];
+  if (USA_ALTERDATA) {
+    try { partes.push(await buscarAlterdata(supabase, estado, meses)); } catch (e) { partes.push(`Alterdata: ERRO ${e.message}`); }
+  }
+  if (CAIXAS.length) partes.push(await buscarEmails(supabase, estado));
+
+  // vincula as notas às compras
   if (env.SITE_URL && env.CRON_SECRET) {
-    const r = await fetch(`${env.SITE_URL}/api/cartao/cron?tarefa=vincular`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${env.CRON_SECRET}` },
-    });
-    vinculo = r.ok ? ` · ${(await r.json()).notas ?? 0} vinculada(s)` : ` · vínculo falhou (${r.status})`;
+    try {
+      const r = await fetch(`${env.SITE_URL}/api/cartao/cron?tarefa=vincular`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${env.CRON_SECRET}` },
+      });
+      partes.push(r.ok ? `${(await r.json()).notas ?? 0} vinculada(s)` : `vínculo falhou (${r.status})`);
+    } catch (e) {
+      partes.push(`vínculo falhou (${e.message})`);
+    }
   }
 
-  const status = `Alterdata: ${analisadas} nota(s) nova(s) analisada(s), ${enviadas} das empresas enviada(s)${vinculo}. Meses ${meses.join(', ')} · ${Date.now() - inicio} ms`;
-  await supabase.from('cartao_nfe_config').upsert({ id: 1, ultima_consulta: new Date().toISOString(), ultimo_status: status, atualizado_em: new Date().toISOString() });
+  const status = `${partes.filter(Boolean).join(' · ')} · ${Date.now() - inicio} ms`;
+  await supabase
+    .from('cartao_nfe_config')
+    .upsert({ id: 1, ultima_consulta: new Date().toISOString(), ultimo_status: status.slice(0, 500), atualizado_em: new Date().toISOString() });
   console.log(new Date().toISOString(), status);
 }
 
