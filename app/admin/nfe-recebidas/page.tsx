@@ -56,7 +56,7 @@ export default async function NfeRecebidasPage({
   ]);
   const empresas = (destinatarios ?? []) as { cnpj: string; nome: string | null; notas: number }[];
   const nomeEmpresa = (cnpj: string | null, nome?: string | null) =>
-    cnpj ? EMPRESAS_GRUPO[cnpj] ?? nome ?? empresas.find((e) => e.cnpj === cnpj)?.nome ?? formatarCnpj(cnpj) : '—';
+    cnpj ? EMPRESAS_GRUPO[cnpj] ?? empresas.find((e) => e.cnpj === cnpj)?.nome ?? nome ?? formatarCnpj(cnpj) : '—';
   const notas = (data ?? []) as unknown as NotaLinha[];
   const total = count ?? 0;
   const soma = (valores ?? []).reduce((s, v) => s + Number(v.valor_total ?? 0), 0);

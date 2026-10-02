@@ -12,8 +12,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   await requireSuperAdmin();
   const filtros = lerFiltros(Object.fromEntries(request.nextUrl.searchParams));
+  const supabase = createClient();
+  const { data: destinatarios } = await supabase.from('nfe_destinatarios').select('cnpj, nome');
+  const nomePadrao = new Map((destinatarios ?? []).map((d) => [d.cnpj as string, d.nome as string]));
   const { data } = await aplicarFiltros(
-    createClient()
+    supabase
       .from('cartao_notas')
       .select(
         'chave, nome_emitente, cnpj_emitente, cnpj_destinatario, nome_destinatario, data_emissao, valor_total, situacao, cartao_compras(descricao, origem, data)'
@@ -31,7 +34,9 @@ export async function GET(request: NextRequest) {
       Série: Number(n.chave.slice(22, 25)),
       Emitente: n.nome_emitente ?? '',
       'CNPJ emitente': formatarCnpj(n.cnpj_emitente),
-      Empresa: n.nome_destinatario ?? (n.cnpj_destinatario ? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? '' : ''),
+      Empresa: n.cnpj_destinatario
+        ? nomePadrao.get(n.cnpj_destinatario) ?? n.nome_destinatario ?? EMPRESAS_GRUPO[n.cnpj_destinatario] ?? ''
+        : '',
       'CNPJ empresa': formatarCnpj(n.cnpj_destinatario),
       Valor: n.valor_total != null ? Number(n.valor_total) : null,
       Situação: n.situacao === 'cancelada' ? 'Cancelada' : 'Autorizada',
