@@ -7,7 +7,7 @@ const DIA_MS = 86_400_000;
 
 /**
  * Situação da nota fiscal de uma compra: link para o PDF/XML quando a nota já
- * chegou (Alterdata/NF-Stock); senão, a explicação do porquê ainda não tem.
+ * chegou (NF-Stock); senão, a explicação do porquê ainda não tem.
  */
 export function NotaFiscalCelula({
   notas,

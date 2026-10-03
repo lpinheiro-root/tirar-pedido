@@ -58,16 +58,16 @@ export default async function NotasPage({ searchParams }: { searchParams: { filt
     <div>
       <PageHeading
         title="Notas fiscais"
-        subtitle="NF-e recebidas pela Biosense, Veneza e Roma, trazidas do Alterdata (NF-Stock) e vinculadas às compras."
+        subtitle="NF-e recebidas pela Biosense, Veneza e Roma, trazidas do NF-Stock e vinculadas às compras."
       />
 
       {superAdmin && (
         <Card className="mb-6 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-h2 text-on-surface">Robô de notas (Alterdata)</p>
+              <p className="text-h2 text-on-surface">Robô de notas (NF-Stock)</p>
               <p className="mt-1 text-body-sm text-on-surface-variant">
-                Roda a cada 30 minutos no servidor interno e envia as notas novas destinadas às empresas.
+                Roda no servidor interno: lê o NF-Stock a cada hora e envia as notas novas destinadas às empresas.
               </p>
             </div>
             <span

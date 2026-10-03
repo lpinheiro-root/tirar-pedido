@@ -137,7 +137,7 @@ export default async function NfeRecebidasPage({
                   ? new Date(maisRecente.data_emissao).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
                   : '—'}
               </span>{' '}
-              (o Alterdata importa do NF-Stock 1x por dia)
+              (lidas do NF-Stock a cada hora)
             </p>
             <p>Robô: {robo?.ultima_consulta ? `última leitura ${formatDateTime(robo.ultima_consulta)}` : 'ainda não rodou'}</p>
           </div>

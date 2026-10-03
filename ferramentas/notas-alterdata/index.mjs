@@ -18,6 +18,7 @@ import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
 import { XMLParser } from 'fast-xml-parser';
 import { caixasConfiguradas, xmlsDaCaixa } from './email.mjs';
+import { xmlsNovosDoNfstock } from './nfstock.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const ARQ_ESTADO = path.join(DIR, 'estado.json');
@@ -46,8 +47,10 @@ const UFS = ['11', '12', '13', '14', '15', '16', '17', '21', '22', '23', '24', '
 for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
   if (!env[k]) throw new Error(`Configuração ausente: ${k}`);
 }
-const USA_ALTERDATA = Boolean(env.ALTERDATA_HOST && env.ALTERDATA_SENHA);
+// a fonte principal é o NF-Stock; o Alterdata fica de reserva (USAR_ALTERDATA=1 para religar)
+const USA_ALTERDATA = env.USAR_ALTERDATA === '1' && Boolean(env.ALTERDATA_HOST && env.ALTERDATA_SENHA);
 const CAIXAS = caixasConfiguradas(env);
+const USA_NFSTOCK = Boolean(env.NFSTOCK_URL && env.NFSTOCK_USUARIO && env.NFSTOCK_SENHA);
 
 /** Meses (AAMM, como na chave de acesso) do mês atual e do anterior, no horário de Brasília. */
 function mesesRecentes() {
@@ -175,6 +178,7 @@ async function buscarAlterdata(supabase, estado, meses) {
     );
     const empresas = new Set([...cadastro.map((r) => r.cnpj).filter((c) => c?.length === 14), ...EMPRESAS_EXTRAS]);
     if (!empresas.size) throw new Error('nenhuma empresa cadastrada no NF-Stock');
+    estado.grupo = [...empresas]; // usado também pela fonte NF-Stock
 
     // raízes de CNPJ do grupo (matriz e filiais): o CNPJ do emitente está na chave
     const raizesGrupo = new Set([...empresas].map((c) => c.slice(0, 8)));
@@ -252,6 +256,49 @@ async function buscarEmails(supabase, estado) {
   return partes.length ? `E-mail: ${partes.join(', ')}` : '';
 }
 
+// ── fonte 3: NF-Stock (site) — inclui notas sem manifestação, que ainda não foram para o Pack ──
+async function buscarNfstock(supabase, estado) {
+  estado.nfstock ??= {};
+  const intervalo = Number(env.NFSTOCK_INTERVALO_MIN ?? 120) * 60_000;
+  const ultima = estado.nfstock.ultimaRodada ? Date.parse(estado.nfstock.ultimaRodada) : 0;
+  if (env.NFSTOCK_FORCAR !== '1' && Date.now() - ultima < intervalo) return '';
+
+  const { novas, listadas, marcarVistas } = await xmlsNovosDoNfstock(env, estado.nfstock, Number(env.NFSTOCK_DIAS ?? 40));
+
+  // CNPJs do grupo: lista guardada (veio do cadastro do Alterdata) + as empresas que
+  // aparecem como destinatárias nas notas recebidas do NF-Stock (completa sozinha)
+  const grupo = new Set(estado.grupo ?? []);
+  for (const { xml } of novas) {
+    const dest = destinatarioCnpj(xml);
+    if (dest) grupo.add(dest);
+  }
+  estado.grupo = [...grupo];
+  const raizesGrupo = new Set([...grupo].map((c) => c.slice(0, 8)));
+  const notas = [];
+  for (const { xml } of novas) {
+    try {
+      const nota = lerNota(null, xml);
+      if (!/^\d{44}$/.test(nota.chave) || nota.chave.slice(20, 22) !== '55') continue;
+      // a lista do NF-Stock é de notas recebidas pela empresa: as de fora do grupo entram
+      // (compras e NFD de clientes); as do próprio grupo só se forem entrada de devolução
+      if (!raizesGrupo.has(nota.chave.slice(6, 14))) notas.push(nota);
+      else if (ehEntradaDevolucaoPropria(xml)) notas.push(lerNota(null, xml, true));
+    } catch {
+      // XML ilegível: segue
+    }
+  }
+  const gravar = SO_DEVOLUCOES ? notas.filter((n) => n.tipo === 'devolucao') : notas;
+  for (let i = 0; i < gravar.length; i += LOTE) {
+    const { error } = await supabase.from('cartao_notas').upsert(gravar.slice(i, i + LOTE), { onConflict: 'chave' });
+    if (error) throw new Error(`Supabase: ${error.message}`);
+  }
+  marcarVistas(novas.map((n) => n.id));
+  estado.nfstock.ultimaRodada = new Date().toISOString();
+  salvarEstado(estado);
+  const devolucoes = gravar.filter((n) => n.tipo === 'devolucao').length;
+  return `NF-Stock: ${listadas} listada(s), ${novas.length} nova(s), ${gravar.length} gravada(s) (${devolucoes} NFD)`;
+}
+
 // ── rodada ──
 async function main() {
   const inicio = Date.now();
@@ -263,6 +310,9 @@ async function main() {
   const partes = [];
   if (USA_ALTERDATA) {
     try { partes.push(await buscarAlterdata(supabase, estado, meses)); } catch (e) { partes.push(`Alterdata: ERRO ${e.message}`); }
+  }
+  if (USA_NFSTOCK) {
+    try { partes.push(await buscarNfstock(supabase, estado)); } catch (e) { partes.push(`NF-Stock: ERRO ${e.message}`); }
   }
   if (CAIXAS.length) partes.push(await buscarEmails(supabase, estado));
 
