@@ -38,13 +38,35 @@ export async function requireRepresentante(role?: 'representante' | 'admin'): Pr
 /** Natuhair Finanças: exige o super admin (vê tudo e gerencia usuários). */
 export async function requireSuperAdmin() {
   const sessao = await requireRepresentante('admin');
-  if (!sessao.representante.super_admin) redirect('/admin/cartao');
+  if (!sessao.representante.super_admin) redirect(telaInicial(sessao.representante));
   return sessao;
 }
 
 /** NF-e Recebidas / devoluções: super admin ou usuário com acesso liberado. */
 export async function requireDevolucoes() {
   const sessao = await requireRepresentante('admin');
-  if (!sessao.representante.super_admin && !sessao.representante.acesso_devolucoes) redirect('/admin/cartao');
+  if (!acessos(sessao.representante).devolucoes) redirect(telaInicial(sessao.representante));
+  return sessao;
+}
+
+/** O que cada usuário pode ver (o super admin vê tudo). */
+export function acessos(r: Representante) {
+  return {
+    // sem a coluna ainda (SQL não rodado) vale como liberado, como era antes
+    cartao: Boolean(r.super_admin) || r.acesso_cartao !== false,
+    devolucoes: Boolean(r.super_admin) || Boolean(r.acesso_devolucoes),
+  };
+}
+
+/** Primeira tela que o usuário pode abrir. */
+export function telaInicial(r: Representante) {
+  const a = acessos(r);
+  return a.cartao ? '/admin/cartao' : a.devolucoes ? '/admin/nfe-recebidas' : '/admin/conta';
+}
+
+/** Cartão: super admin ou usuário com acesso liberado. */
+export async function requireCartao() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).cartao) redirect(telaInicial(sessao.representante));
   return sessao;
 }

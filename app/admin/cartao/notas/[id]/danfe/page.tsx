@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { formatCurrency } from '@/lib/format';
 import { lerXml } from '@/lib/cartao/sefaz';
@@ -41,7 +41,7 @@ function Campo({ rotulo, valor, className = '' }: { rotulo: string; valor: React
 
 /** DANFE simplificado a partir do XML autorizado (imprimir / salvar como PDF pelo navegador). */
 export default async function DanfePage({ params }: { params: { id: string } }) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const { data: nota } = await createClient()
     .from('cartao_notas')
     .select('chave, xml, xml_gz')

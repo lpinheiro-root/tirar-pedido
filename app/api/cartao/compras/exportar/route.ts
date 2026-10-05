@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { ORIGEM_LABEL } from '@/lib/cartao/rotulos';
 import { dataExcel, respostaExcel } from '@/lib/cartao/exportacao';
@@ -12,7 +12,7 @@ const FONTE_LABEL: Record<string, string> = { api: 'API', importacao: 'Planilha'
 
 /** Exporta as compras visíveis ao usuário (RLS: as próprias; super admin: todas). */
 export async function GET(request: NextRequest) {
-  const { representante } = await requireRepresentante('admin');
+  const { representante } = await requireCartao();
   const supabase = createClient();
   const params = request.nextUrl.searchParams;
   const origem = params.get('origem');

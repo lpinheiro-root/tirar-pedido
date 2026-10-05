@@ -44,6 +44,19 @@ export function NovoUsuarioForm() {
         </div>
       </div>
       <div className="mt-4">
+        <p className="mb-2 text-label text-on-surface-variant">Acesso</p>
+        <div className="flex flex-wrap gap-6">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+            <input type="checkbox" name="acesso_cartao" defaultChecked className="h-4 w-4 accent-primary" />
+            Cartão
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+            <input type="checkbox" name="acesso_devolucoes" className="h-4 w-4 accent-primary" />
+            NF-e Recebidas
+          </label>
+        </div>
+      </div>
+      <div className="mt-4">
         <Enviar />
       </div>
       {estado?.erro && <p className="mt-2 text-body-sm text-error">{estado.erro}</p>}

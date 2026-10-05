@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -84,7 +84,7 @@ export default async function FaturaPage({
   params: { id: string };
   searchParams: { filtro?: string; nova?: string };
 }) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const supabase = createClient();
 
   const [{ data: fatura }, { data: lancData }] = await Promise.all([

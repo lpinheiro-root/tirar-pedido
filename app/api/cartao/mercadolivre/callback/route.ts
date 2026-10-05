@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { conectarConta } from '@/lib/cartao/mercadolivre';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireCartao();
   // Na Netlify, request.url traz o endereço interno do deploy (<id>--site.netlify.app),
   // onde o navegador não tem a sessão: a volta usa o domínio oficial do ML_REDIRECT_URI.
   const destino = new URL('/admin/cartao/integracoes', process.env.ML_REDIRECT_URI ?? request.url);

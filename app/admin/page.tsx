@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
+import { requireRepresentante, telaInicial } from '@/lib/auth';
 
-// Nesta versão (Natuhair Finanças) o painel admin é só o módulo Cartão.
-export default function AdminPage() {
-  redirect('/admin/cartao');
+// Natuhair Finanças: abre a primeira tela liberada para o usuário (Cartão ou NF-e Recebidas).
+export default async function AdminPage() {
+  const { representante } = await requireRepresentante('admin');
+  redirect(telaInicial(representante));
 }

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { BANCO_LABEL, ORIGEM_LABEL, STATUS_LANCAMENTO, TIPO_LABEL, type StatusLancamento } from '@/lib/cartao/rotulos';
 import { dataExcel, respostaExcel } from '@/lib/cartao/exportacao';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 /** Exporta a fatura com o resultado da conciliação de cada lançamento. */
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const supabase = createClient();
 
   const [{ data: fatura }, { data: lancamentos }] = await Promise.all([

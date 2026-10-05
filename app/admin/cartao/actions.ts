@@ -3,7 +3,7 @@
 import { createHash } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { extrairLinhasPdf, PdfSenhaError } from '@/lib/cartao/pdf';
 import { parseLinhas } from '@/lib/cartao/parser';
@@ -34,7 +34,7 @@ function revalidarCartao() {
 // ─────────────────────────────────────────────────────────────
 
 export async function enviarFatura(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireCartao();
   const arquivo = formData.get('arquivo');
   const senha = String(formData.get('senha') ?? '').trim() || undefined;
   if (!(arquivo instanceof File) || arquivo.size === 0) return { erro: 'Selecione o PDF da fatura.' };
@@ -108,13 +108,13 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
 }
 
 export async function reconciliarFatura(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   await conciliarFatura(createClient(), String(formData.get('faturaId')));
   revalidarCartao();
 }
 
 export async function excluirFatura(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   await createClient().from('cartao_faturas').delete().eq('id', String(formData.get('faturaId')));
   revalidarCartao();
   redirect('/admin/cartao');
@@ -125,7 +125,7 @@ export async function excluirFatura(formData: FormData) {
 // ─────────────────────────────────────────────────────────────
 
 export async function vincularManual(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const lancamentoId = String(formData.get('lancamentoId'));
   const compraId = String(formData.get('compraId') ?? '');
   if (!compraId) return;
@@ -158,7 +158,7 @@ export async function vincularManual(formData: FormData) {
 }
 
 export async function desvincular(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   await createClient()
     .from('cartao_lancamentos')
     .update({ status: 'pendente', compra_id: null, vinculo: null, diferenca: null, observacao: null })
@@ -168,7 +168,7 @@ export async function desvincular(formData: FormData) {
 
 /** Marca como resolvido sem compra (ex.: assinatura) ou aceita uma divergência. */
 export async function marcarResolvido(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const supabase = createClient();
   const id = String(formData.get('lancamentoId'));
   const observacao = String(formData.get('observacao') ?? '').trim() || null;
@@ -185,7 +185,7 @@ export async function marcarResolvido(formData: FormData) {
 // ─────────────────────────────────────────────────────────────
 
 export async function importarCompras(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireCartao();
   const arquivo = formData.get('arquivo');
   const origemPadrao = String(formData.get('origem') ?? 'outro');
   if (!(arquivo instanceof File) || arquivo.size === 0) return { erro: 'Selecione a planilha.' };
@@ -224,7 +224,7 @@ export async function importarCompras(_prev: FormResultado | undefined, formData
 }
 
 export async function novaCompra(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  const { userId } = await requireRepresentante('admin');
+  const { userId } = await requireCartao();
   const valor = Number(String(formData.get('valor') ?? '').replace(/\./g, '').replace(',', '.'));
   const data = String(formData.get('data') ?? '');
   if (!data || !Number.isFinite(valor) || valor <= 0) return { erro: 'Informe data e valor.' };
@@ -250,7 +250,7 @@ export async function novaCompra(_prev: FormResultado | undefined, formData: For
 }
 
 export async function excluirCompra(formData: FormData) {
-  await requireRepresentante('admin');
+  await requireCartao();
   const supabase = createClient();
   const id = String(formData.get('compraId'));
   // lançamentos vinculados voltam para pendente
@@ -270,7 +270,7 @@ export async function sincronizarMercadoLivre(
   _prev: FormResultado | undefined,
   formData: FormData
 ): Promise<FormResultado> {
-  const { userId, representante } = await requireRepresentante('admin');
+  const { userId, representante } = await requireCartao();
   const dias = Math.min(730, Math.max(7, Number(formData.get('dias') || 120)));
   const desde = somarDias(new Date().toISOString().slice(0, 10), -dias);
 
@@ -289,7 +289,7 @@ export async function sincronizarMercadoLivre(
 }
 
 export async function desconectarMercadoLivre(formData: FormData) {
-  const { userId, representante } = await requireRepresentante('admin');
+  const { userId, representante } = await requireCartao();
   let exclusao = createServiceRoleClient().from('cartao_integracoes').delete().eq('id', String(formData.get('id')));
   if (!representante.super_admin) exclusao = exclusao.eq('usuario_id', userId);
   await exclusao;

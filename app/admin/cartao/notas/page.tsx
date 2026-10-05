@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card } from '@/components/ui/Card';
@@ -33,7 +33,7 @@ function cnpjFormatado(c: string | null) {
 }
 
 export default async function NotasPage({ searchParams }: { searchParams: { filtro?: string } }) {
-  const { representante } = await requireRepresentante('admin');
+  const { representante } = await requireCartao();
   const superAdmin = Boolean(representante.super_admin);
   const supabase = createClient();
   const filtro = superAdmin ? searchParams.filtro ?? 'compras' : 'compras';

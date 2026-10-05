@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { alternarAcessoDevolucoes, alternarAtivoUsuario, definirSenhaUsuario } from './actions';
+import { alternarAcesso, alternarAtivoUsuario, definirSenhaUsuario } from './actions';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/format';
 import type { Representante } from '@/types';
@@ -12,6 +12,8 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
   const [senha, setSenha] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok?: string; erro?: string } | null>(null);
+  // sem a coluna acesso_cartao (SQL ainda não rodado) o Cartão vale como liberado
+  const acesso = { cartao: usuario.acesso_cartao !== false, devolucoes: Boolean(usuario.acesso_devolucoes) };
 
   async function salvarSenha() {
     setSalvando(true);
@@ -50,21 +52,30 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
           {usuario.super_admin ? (
             <span className="text-label text-on-surface-variant">tudo</span>
           ) : (
-            <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={Boolean(usuario.acesso_devolucoes)}
-                disabled={pending}
-                onChange={(e) =>
-                  startTransition(async () => {
-                    const res = await alternarAcessoDevolucoes(usuario.id, e.target.checked);
-                    if (res.erro) setMensagem({ erro: res.erro });
-                  })
-                }
-              />
-              Devoluções
-            </label>
+            <div className="flex flex-col gap-1">
+              {(
+                [
+                  ['cartao', 'Cartão', acesso.cartao],
+                  ['devolucoes', 'NF-e Recebidas', acesso.devolucoes],
+                ] as const
+              ).map(([tela, rotulo, marcado]) => (
+                <label key={tela} className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={marcado}
+                    disabled={pending}
+                    onChange={(e) =>
+                      startTransition(async () => {
+                        const res = await alternarAcesso(usuario.id, tela, e.target.checked);
+                        if (res.erro) setMensagem({ erro: res.erro });
+                      })
+                    }
+                  />
+                  {rotulo}
+                </label>
+              ))}
+            </div>
           )}
         </td>
         <td className="px-4 py-3">

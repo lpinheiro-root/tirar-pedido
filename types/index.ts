@@ -48,6 +48,7 @@ export interface Representante {
   super_admin?: boolean;
   /** pode ver e preencher o controle de devoluções (NF-e Recebidas) */
   acesso_devolucoes?: boolean;
+  acesso_cartao?: boolean;
   criado_em: string;
 }
 

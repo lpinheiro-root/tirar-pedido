@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -51,7 +51,7 @@ export default async function ComprasPage({
 }: {
   searchParams: { origem?: string; mes?: string; so_mes?: string };
 }) {
-  const { representante } = await requireRepresentante('admin');
+  const { representante } = await requireCartao();
   const supabase = createClient();
   const origem = searchParams.origem ?? 'todas';
   const mes = /^\d{4}-\d{2}$/.test(searchParams.mes ?? '') ? searchParams.mes! : mesAtual();

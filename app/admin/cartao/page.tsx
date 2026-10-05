@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -29,7 +29,7 @@ async function nomesDosDonos(supabase: ReturnType<typeof createClient>, ids: str
 }
 
 export default async function CartaoFaturasPage() {
-  const { representante } = await requireRepresentante('admin');
+  const { representante } = await requireCartao();
   const supabase = createClient();
   const { data } = await supabase
     .from('cartao_faturas')

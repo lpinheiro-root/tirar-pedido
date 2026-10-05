@@ -1,5 +1,5 @@
 import { headers } from 'next/headers';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { PageHeading } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -13,7 +13,7 @@ export default async function IntegracoesPage({
 }: {
   searchParams: { conectado?: string; erro?: string };
 }) {
-  const { userId, representante } = await requireRepresentante('admin');
+  const { userId, representante } = await requireCartao();
   const configurado = mercadoLivreConfigurado();
   const host = headers().get('x-forwarded-host') ?? headers().get('host');
   const urlCallback = `https://${host}/api/cartao/mercadolivre/callback`;

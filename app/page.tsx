@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { telaInicial } from '@/lib/auth';
+import type { Representante } from '@/types';
 
 export default async function RootPage() {
   const supabase = createClient();
@@ -9,11 +11,9 @@ export default async function RootPage() {
 
   if (!user) redirect('/login');
 
-  const { data: representante } = await supabase
-    .from('representantes')
-    .select('role')
-    .eq('id', user.id)
-    .single();
+  const { data: representante } = await supabase.from('representantes').select('*').eq('id', user.id).single();
 
-  redirect(representante?.role === 'admin' ? '/admin/cartao' : '/representante');
+  redirect(
+    representante?.role === 'admin' ? telaInicial(representante as Representante) : '/representante'
+  );
 }

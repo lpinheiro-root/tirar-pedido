@@ -1,4 +1,4 @@
-import { requireRepresentante } from '@/lib/auth';
+import { acessos, requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
@@ -7,10 +7,11 @@ import { IconCreditCard, IconDocument, IconUsers } from '@/components/ui/Icons';
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
 
-  // Nesta versão (Natuhair Finanças) o painel admin expõe só o módulo Cartão.
+  // Natuhair Finanças: cada usuário vê só as telas liberadas na tela de Usuários.
+  const acesso = acessos(representante);
   const links = [
-    { href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> },
-    ...(representante.super_admin || representante.acesso_devolucoes
+    ...(acesso.cartao ? [{ href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> }] : []),
+    ...(acesso.devolucoes
       ? [{ href: '/admin/nfe-recebidas', label: 'NF-e Recebidas', icon: <IconDocument /> }]
       : []),
     ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),

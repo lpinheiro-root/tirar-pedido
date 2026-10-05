@@ -1,13 +1,13 @@
 import { randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
-import { requireRepresentante } from '@/lib/auth';
+import { requireCartao } from '@/lib/auth';
 import { urlAutorizacao } from '@/lib/cartao/mercadolivre';
 
 export const dynamic = 'force-dynamic';
 
 /** Inicia o OAuth: redireciona o admin para autorizar a conta da empresa no Mercado Livre. */
 export async function GET() {
-  await requireRepresentante('admin');
+  await requireCartao();
   const state = randomBytes(16).toString('hex');
   const response = NextResponse.redirect(urlAutorizacao(state));
   response.cookies.set('ml_oauth_state', state, {
