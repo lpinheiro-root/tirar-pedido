@@ -57,7 +57,10 @@ export async function criarUsuario(
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
-    return { erro: 'Falha ao registrar o usuário.' };
+    if (erroInsert.message.includes('acesso_cartao')) {
+      return { erro: 'Falta rodar o supabase/acesso_cartao.sql no Supabase para criar usuário sem o Cartão.' };
+    }
+    return { erro: `Falha ao registrar o usuário: ${erroInsert.message}` };
   }
 
   revalidatePath('/admin/usuarios');
