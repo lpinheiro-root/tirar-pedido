@@ -55,18 +55,28 @@ export function acessos(r: Representante) {
     // sem a coluna ainda (SQL não rodado) vale como liberado, como era antes
     cartao: Boolean(r.super_admin) || r.acesso_cartao !== false,
     devolucoes: Boolean(r.super_admin) || Boolean(r.acesso_devolucoes),
+    ecommerce: Boolean(r.super_admin) || Boolean(r.acesso_ecommerce),
   };
 }
 
 /** Primeira tela que o usuário pode abrir. */
 export function telaInicial(r: Representante) {
   const a = acessos(r);
-  return a.cartao ? '/admin/cartao' : a.devolucoes ? '/admin/nfe-recebidas' : '/admin/conta';
+  if (a.cartao) return '/admin/cartao';
+  if (a.devolucoes) return '/admin/nfe-recebidas';
+  return a.ecommerce ? '/admin/ecommerce' : '/admin/conta';
 }
 
 /** Cartão: super admin ou usuário com acesso liberado. */
 export async function requireCartao() {
   const sessao = await requireRepresentante('admin');
   if (!acessos(sessao.representante).cartao) redirect(telaInicial(sessao.representante));
+  return sessao;
+}
+
+/** E-Commerce: super admin ou usuário com acesso liberado. */
+export async function requireEcommerce() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).ecommerce) redirect(telaInicial(sessao.representante));
   return sessao;
 }

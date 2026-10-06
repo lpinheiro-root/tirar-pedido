@@ -30,9 +30,12 @@ export async function criarUsuario(
 
   const acessoCartao = formData.get('acesso_cartao') === 'on';
   const acessoDevolucoes = formData.get('acesso_devolucoes') === 'on';
+  const acessoEcommerce = formData.get('acesso_ecommerce') === 'on';
 
   if (!nome || !email) return { erro: 'Preencha nome e e-mail.' };
-  if (!acessoCartao && !acessoDevolucoes) return { erro: 'Marque pelo menos um acesso: Cartão ou NF-e Recebidas.' };
+  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce) {
+    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas ou E-Commerce.' };
+  }
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
   if (senha !== confirmacao) return { erro: 'A confirmação não confere com a senha.' };
 
@@ -51,14 +54,15 @@ export async function criarUsuario(
     codigo_representante_sql: 'CARTAO',
     role: 'admin',
     ativo: true,
+    acesso_cartao: acessoCartao,
     acesso_devolucoes: acessoDevolucoes,
-    // a coluna só existe depois do supabase/acesso_cartao.sql; sem ela todos têm o Cartão
-    ...(acessoCartao ? {} : { acesso_cartao: false }),
+    // a coluna só existe depois do supabase/acesso_ecommerce.sql
+    ...(acessoEcommerce ? { acesso_ecommerce: true } : {}),
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
-    if (erroInsert.message.includes('acesso_cartao')) {
-      return { erro: 'Falta rodar o supabase/acesso_cartao.sql no Supabase para criar usuário sem o Cartão.' };
+    if (erroInsert.message.includes('acesso_ecommerce')) {
+      return { erro: 'Falta rodar o supabase/acesso_ecommerce.sql no Supabase para liberar o E-Commerce.' };
     }
     return { erro: `Falha ao registrar o usuário: ${erroInsert.message}` };
   }
@@ -87,15 +91,15 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
 /** Libera ou retira o acesso a uma tela: Cartão ou NF-e Recebidas (controle de devoluções). */
 export async function alternarAcesso(
   id: string,
-  tela: 'cartao' | 'devolucoes',
+  tela: 'cartao' | 'devolucoes' | 'ecommerce',
   acesso: boolean
 ): Promise<{ erro?: string }> {
   await requireSuperAdmin();
-  const coluna = tela === 'cartao' ? 'acesso_cartao' : 'acesso_devolucoes';
+  const coluna = `acesso_${tela}`;
   const { error } = await createServiceRoleClient().from('representantes').update({ [coluna]: acesso }).eq('id', id);
   revalidatePath('/admin/usuarios');
-  if (error?.message.includes('acesso_cartao')) {
-    return { erro: 'Falta rodar o supabase/acesso_cartao.sql no Supabase para liberar essa opção.' };
+  if (error?.message.includes(coluna)) {
+    return { erro: `Falta rodar o supabase/${coluna}.sql no Supabase para liberar essa opção.` };
   }
   return error ? { erro: error.message } : {};
 }

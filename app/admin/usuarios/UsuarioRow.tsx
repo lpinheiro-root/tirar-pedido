@@ -13,7 +13,11 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ ok?: string; erro?: string } | null>(null);
   // sem a coluna acesso_cartao (SQL ainda não rodado) o Cartão vale como liberado
-  const acesso = { cartao: usuario.acesso_cartao !== false, devolucoes: Boolean(usuario.acesso_devolucoes) };
+  const acesso = {
+    cartao: usuario.acesso_cartao !== false,
+    devolucoes: Boolean(usuario.acesso_devolucoes),
+    ecommerce: Boolean(usuario.acesso_ecommerce),
+  };
 
   async function salvarSenha() {
     setSalvando(true);
@@ -57,6 +61,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
                 [
                   ['cartao', 'Cartão', acesso.cartao],
                   ['devolucoes', 'NF-e Recebidas', acesso.devolucoes],
+                  ['ecommerce', 'E-Commerce', acesso.ecommerce],
                 ] as const
               ).map(([tela, rotulo, marcado]) => (
                 <label key={tela} className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
