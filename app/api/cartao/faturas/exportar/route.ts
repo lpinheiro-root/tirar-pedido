@@ -1,5 +1,6 @@
 import { requireCartao } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { carregarMemoria } from '@/lib/cartao/classificacoes';
 import { buscarTodas } from '@/lib/supabasePaginado';
 import {
   planilhaDasFaturas,
@@ -18,7 +19,10 @@ export async function GET() {
   const { data: faturas } = await supabase.from('cartao_faturas').select('*').order('vencimento');
   // o mesmo PDF enviado por duas pessoas entra uma vez só (fica a cópia de quem está baixando)
   const porArquivo = new Map<string, FaturaPlanilha & { arquivo_hash: string; criado_por: string }>();
-  for (const f of (faturas ?? []) as (FaturaPlanilha & { arquivo_hash: string; criado_por: string })[]) {
+  for (const f of (faturas ?? []) as (FaturaPlanilha & {
+    arquivo_hash: string;
+    criado_por: string;
+  })[]) {
     const atual = porArquivo.get(f.arquivo_hash);
     if (!atual || (atual.criado_por !== userId && f.criado_por === userId)) porArquivo.set(f.arquivo_hash, f);
   }
@@ -39,8 +43,12 @@ export async function GET() {
     : [];
 
   const dados = await planilhaDasFaturas(
-    lista.map((fatura) => ({ fatura, lancamentos: lancamentos.filter((l) => l.fatura_id === fatura.id) })),
-    false
+    lista.map((fatura) => ({
+      fatura,
+      lancamentos: lancamentos.filter((l) => l.fatura_id === fatura.id),
+    })),
+    false,
+    await carregarMemoria(createServiceRoleClient())
   );
   return respostaPlanilha(dados, `Cartoes ${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

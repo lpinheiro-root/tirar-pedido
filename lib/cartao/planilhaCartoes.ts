@@ -1,5 +1,6 @@
 import type ExcelJS from 'exceljs';
 import { BANCO_LABEL, ORIGEM_LABEL, STATUS_LANCAMENTO, TIPO_LABEL, type StatusLancamento } from './rotulos';
+import type { MemoriaCartoes } from './classificacoes';
 
 /**
  * Excel no formato da planilha "Cartões" do financeiro: uma aba por empresa e,
@@ -60,25 +61,57 @@ const CIDADE_NO_FIM =
   /\s+(?:S?[AÃ]O PAULO|AO PAULO|O?S?ASCO\w?|CURITIBA\w?|RIO DE JANEI\w*|NOVA IGUA\w*|MESQUITA\w?|BELO HORIZON\w*|BARUER\w*|SAN FRANCISCO|HELSINKI|MILTON KEYNES|COIMBRA|JOINVILLE?\w?|CUIABA\w?|PORTO ALEGRE|SOROCABA\w?|PINHAIS\w?|S?8?SANTO ANDRE\w?|JAGUARIUNA|MIRASSOL|CATAGUASES\w?|SAO JOSE DOS\w*|NOVA IGUAU\w?)$/i;
 
 /** "HOTEIS COM ao Paulo)" → "HOTEIS COM" */
-function estabelecimento(l: LancamentoPlanilha): string {
-  const c = l.cartao_compras;
-  if (c?.origem === 'mercadolivre') return 'Mercado Livre';
+function nomeDaFatura(l: LancamentoPlanilha): string {
   const limpo = l.descricao.replace(/[\s)|!\\/“”"']+$/g, '').trim();
   return limpo.replace(CIDADE_NO_FIM, '').trim() || limpo;
 }
 
-function descricao(l: LancamentoPlanilha): string {
+/**
+ * Colunas C (estabelecimento), D (descrição) e E (conta contábil), como a equipe
+ * preenche: primeiro o que já foi escrito para a mesma compra (parcelas
+ * anteriores), depois o pedido do Mercado Livre vinculado, depois o que se usa
+ * para aquele estabelecimento. O que não houver fica em branco para preencher.
+ */
+function colunasCDE(l: LancamentoPlanilha, empresa: string, memoria: MemoriaCartoes | null) {
+  const s = memoria?.sugerir(empresa, l.descricao, Number(l.valor), l.parcela_atual, l.parcela_total);
   const c = l.cartao_compras;
-  const partes = [
-    c ? String(c.descricao ?? c.loja ?? '') : '',
-    l.tipo !== 'compra' ? TIPO_LABEL[l.tipo] ?? '' : '',
+  const extras = [
+    l.tipo !== 'compra' && l.tipo !== 'estorno' ? (TIPO_LABEL[l.tipo] ?? '') : '',
     l.observacao ?? '',
   ].filter(Boolean);
-  return partes.join(' - ').toUpperCase();
+
+  if (s?.fonte === 'parcela') {
+    return {
+      estab: s.estabelecimento ?? nomeDaFatura(l),
+      desc: s.descricao,
+      conta: s.conta,
+    };
+  }
+  if (c?.origem === 'mercadolivre') {
+    const produto = String(c.descricao ?? '').replace(/\s*\(pedidos?\s[^)]*\)\s*$/i, '');
+    return {
+      estab: 'Mercado Livre',
+      desc: [produto, ...extras].filter(Boolean).join(' - ').toUpperCase() || null,
+      conta: s?.conta ?? null,
+    };
+  }
+  const desc = [s?.descricao ?? (c ? String(c.descricao ?? c.loja ?? '') : ''), ...extras].filter(Boolean).join(' - ');
+  return {
+    estab: s?.estabelecimento ?? nomeDaFatura(l),
+    desc: desc ? desc.toUpperCase() : null,
+    conta: s?.conta ?? null,
+  };
 }
 
 /** Escreve o bloco de uma fatura a partir da linha `inicio`; devolve a próxima linha livre. */
-function escreverBloco(ws: ExcelJS.Worksheet, inicio: number, empresa: string, f: FaturaPlanilha, lancs: LancamentoPlanilha[]) {
+function escreverBloco(
+  ws: ExcelJS.Worksheet,
+  inicio: number,
+  empresa: string,
+  f: FaturaPlanilha,
+  lancs: LancamentoPlanilha[],
+  memoria: MemoriaCartoes | null
+) {
   let r = inicio;
   const titulo = ws.getRow(r);
   titulo.getCell(1).value = `Fatura-cartão ${empresa} ${f.vencimento ? br(f.vencimento) : br(f.criado_em)}`;
@@ -104,10 +137,13 @@ function escreverBloco(ws: ExcelJS.Worksheet, inicio: number, empresa: string, f
     const row = ws.getRow(r);
     row.getCell(1).value = Number(l.valor);
     row.getCell(1).numFmt = MOEDA;
-    row.getCell(2).value = l.parcela_atual && l.parcela_total ? `${dois(l.parcela_atual)}a/${dois(l.parcela_total)}` : null;
+    row.getCell(2).value =
+      l.parcela_atual && l.parcela_total ? `${dois(l.parcela_atual)}a/${dois(l.parcela_total)}` : null;
     row.getCell(2).alignment = { horizontal: 'center' };
-    row.getCell(3).value = estabelecimento(l);
-    row.getCell(4).value = descricao(l) || null;
+    const cde = colunasCDE(l, empresa, memoria);
+    row.getCell(3).value = cde.estab;
+    row.getCell(4).value = cde.desc;
+    row.getCell(5).value = cde.conta;
     row.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
     row.getCell(5).alignment = { horizontal: 'center' };
     for (let c = 1; c <= 5; c++) row.getCell(c).border = BORDA;
@@ -152,10 +188,20 @@ function abaConciliacao(wb: ExcelJS.Workbook, lancs: LancamentoPlanilha[]) {
     { header: 'Diferença', key: 'dif', width: 12, style: { numFmt: MOEDA } },
     { header: 'Compra - site', key: 'site', width: 15 },
     { header: 'Compra - conta', key: 'conta', width: 18 },
-    { header: 'Compra - data', key: 'cdata', width: 13, style: { numFmt: 'dd/mm/yyyy' } },
+    {
+      header: 'Compra - data',
+      key: 'cdata',
+      width: 13,
+      style: { numFmt: 'dd/mm/yyyy' },
+    },
     { header: 'Compra - descrição', key: 'cdesc', width: 50 },
     { header: 'Compra - pedido', key: 'pedido', width: 22 },
-    { header: 'Compra - valor total', key: 'ctotal', width: 16, style: { numFmt: MOEDA } },
+    {
+      header: 'Compra - valor total',
+      key: 'ctotal',
+      width: 16,
+      style: { numFmt: MOEDA },
+    },
     { header: 'Observação', key: 'obs', width: 30 },
   ];
   ws.getRow(1).font = { bold: true };
@@ -171,14 +217,18 @@ function abaConciliacao(wb: ExcelJS.Workbook, lancs: LancamentoPlanilha[]) {
       final: l.cartao_final ?? '',
       tipo: TIPO_LABEL[l.tipo] ?? l.tipo,
       valor: Number(l.valor),
-      status: l.tipo === 'compra' ? STATUS_LANCAMENTO[l.status as StatusLancamento]?.label ?? l.status : '',
+      status: l.tipo === 'compra' ? (STATUS_LANCAMENTO[l.status as StatusLancamento]?.label ?? l.status) : '',
       vinculo: l.vinculo === 'auto' ? 'Automático' : l.vinculo === 'manual' ? 'Manual' : '',
       dif: l.diferenca != null && Number(l.diferenca) !== 0 ? Number(l.diferenca) : null,
-      site: c ? ORIGEM_LABEL[c.origem as string] ?? String(c.origem) : '',
+      site: c ? (ORIGEM_LABEL[c.origem as string] ?? String(c.origem)) : '',
       conta: c ? String(c.conta ?? '') : '',
       cdata: c ? data(c.data as string) : null,
       cdesc: c ? String(c.descricao ?? c.loja ?? '') : '',
-      pedido: c ? (pedidos?.length ? pedidos.join(', ') : String(c.pedido_externo ?? '').replace(/^pagamento:/, 'pgto ')) : '',
+      pedido: c
+        ? pedidos?.length
+          ? pedidos.join(', ')
+          : String(c.pedido_externo ?? '').replace(/^pagamento:/, 'pgto ')
+        : '',
       ctotal: c ? Number(c.valor_total) : null,
       obs: l.observacao ?? '',
     });
@@ -187,7 +237,8 @@ function abaConciliacao(wb: ExcelJS.Workbook, lancs: LancamentoPlanilha[]) {
 
 export async function planilhaDasFaturas(
   faturas: { fatura: FaturaPlanilha; lancamentos: LancamentoPlanilha[] }[],
-  comConciliacao: boolean
+  comConciliacao: boolean,
+  memoria: MemoriaCartoes | null = null
 ): Promise<Uint8Array> {
   const ExcelJSMod = (await import('exceljs')).default;
   const wb = new ExcelJSMod.Workbook();
@@ -200,9 +251,13 @@ export async function planilhaDasFaturas(
   for (const { fatura, lancamentos } of ordenadas) {
     const empresa = empresaDaFatura(fatura);
     const ws = abaEmpresa(wb, empresa);
-    proximaLinha.set(ws.name, escreverBloco(ws, proximaLinha.get(ws.name) ?? 1, empresa, fatura, lancamentos));
+    proximaLinha.set(ws.name, escreverBloco(ws, proximaLinha.get(ws.name) ?? 1, empresa, fatura, lancamentos, memoria));
   }
-  if (comConciliacao) abaConciliacao(wb, faturas.flatMap((f) => f.lancamentos));
+  if (comConciliacao)
+    abaConciliacao(
+      wb,
+      faturas.flatMap((f) => f.lancamentos)
+    );
 
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }

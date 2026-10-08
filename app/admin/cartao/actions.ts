@@ -17,6 +17,7 @@ import {
   somarDias,
 } from '@/lib/cartao/conciliacaoDb';
 import { lerPlanilhaCompras } from '@/lib/cartao/importacao';
+import { lerPlanilhaCartoes } from '@/lib/cartao/classificacoes';
 import { contasML, sincronizarContasML } from '@/lib/cartao/sincronizacaoML';
 import { vincularNotas } from '@/lib/cartao/nfe';
 
@@ -346,4 +347,67 @@ export async function desconectarMercadoLivre(formData: FormData) {
   if (!representante.super_admin) exclusao = exclusao.eq('usuario_id', userId);
   await exclusao;
   revalidarCartao();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Planilha "Cartões" do financeiro (memória para o Excel exportado)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Importa a planilha "Cartões" (ou um Excel exportado e preenchido pela equipe):
+ * cada fatura da planilha (empresa + vencimento) substitui o que havia antes.
+ */
+export async function importarPlanilhaCartoes(
+  _prev: FormResultado | undefined,
+  formData: FormData
+): Promise<FormResultado> {
+  const { userId } = await requireCartao();
+  const arquivo = formData.get('arquivo');
+  if (!(arquivo instanceof File) || arquivo.size === 0) return { erro: 'Selecione a planilha Cartões (.xlsx).' };
+
+  let lido;
+  try {
+    lido = await lerPlanilhaCartoes(await arquivo.arrayBuffer());
+  } catch {
+    return {
+      erro: 'Não consegui ler o arquivo. Use a planilha Cartões em .xlsx.',
+    };
+  }
+  if (!lido.linhas.length) {
+    return {
+      erro: 'Nenhuma fatura encontrada. As abas precisam se chamar "Cartão <empresa>" e ter os blocos "Fatura-cartão EMPRESA dd/mm/aaaa".',
+    };
+  }
+
+  const service = createServiceRoleClient();
+  const faturas = new Map<string, { empresa: string; vencimento: string | null }>();
+  lido.linhas.forEach((l) =>
+    faturas.set(`${l.empresa}|${l.vencimento}`, {
+      empresa: l.empresa,
+      vencimento: l.vencimento,
+    })
+  );
+  for (const { empresa, vencimento } of Array.from(faturas.values())) {
+    let apagar = service.from('cartao_classificacoes').delete().eq('empresa', empresa);
+    apagar = vencimento ? apagar.eq('vencimento', vencimento) : apagar.is('vencimento', null);
+    const { error } = await apagar;
+    if (error) {
+      return {
+        erro: /cartao_classificacoes/.test(error.message)
+          ? 'Falta rodar o supabase/cartao_classificacoes.sql no Supabase.'
+          : `Erro ao gravar: ${error.message}`,
+      };
+    }
+  }
+  const linhas = lido.linhas.map((l) => ({ ...l, importado_por: userId }));
+  for (let i = 0; i < linhas.length; i += 500) {
+    const { error } = await service.from('cartao_classificacoes').insert(linhas.slice(i, i + 500));
+    if (error) return { erro: `Erro ao gravar: ${error.message}` };
+  }
+
+  const empresas = Array.from(new Set(lido.linhas.map((l) => l.empresa))).join(', ');
+  revalidarCartao();
+  return {
+    mensagem: `${lido.linhas.length} lançamentos de ${faturas.size} fatura(s) importados (${empresas}). O Excel das próximas faturas já sai preenchido com essas informações.`,
+  };
 }

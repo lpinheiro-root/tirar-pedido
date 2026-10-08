@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireCartao } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { carregarMemoria } from '@/lib/cartao/classificacoes';
 import {
   empresaDaFatura,
   planilhaDasFaturas,
@@ -26,7 +27,11 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   if (!fatura) notFound();
 
   const f = fatura as FaturaPlanilha;
-  const dados = await planilhaDasFaturas([{ fatura: f, lancamentos: (lancamentos ?? []) as LancamentoPlanilha[] }], true);
+  const dados = await planilhaDasFaturas(
+    [{ fatura: f, lancamentos: (lancamentos ?? []) as LancamentoPlanilha[] }],
+    true,
+    await carregarMemoria(createServiceRoleClient())
+  );
   const nome = `Fatura cartao ${empresaDaFatura(f)} ${f.vencimento ?? f.criado_em.slice(0, 10)}.xlsx`;
   return respostaPlanilha(dados, nome);
 }

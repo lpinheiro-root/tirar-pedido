@@ -8,6 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { BANCO_LABEL } from '@/lib/cartao/rotulos';
 import { EnviarFaturaForm } from './EnviarFaturaForm';
 import { ExcluirFaturaBotao } from './ExcluirFaturaBotao';
+import { ImportarCartoesForm } from './ImportarCartoesForm';
 
 interface FaturaLista {
   id: string;
@@ -62,16 +63,17 @@ export default async function CartaoFaturasPage() {
         </CardContent>
       </Card>
 
-      {faturas.length > 0 && (
-        <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-start justify-end gap-3">
+        <ImportarCartoesForm />
+        {faturas.length > 0 && (
           <a
             href="/api/cartao/faturas/exportar"
             className="inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
           >
             <IconDownload width={16} height={16} /> Baixar todas (planilha Cartões)
           </a>
-        </div>
-      )}
+        )}
+      </div>
 
       <Card>
         <div className="overflow-x-auto">
