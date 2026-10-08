@@ -34,16 +34,19 @@ function revalidarCartao() {
 // Faturas
 // ─────────────────────────────────────────────────────────────
 
-export async function enviarFatura(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
-  const { userId } = await requireCartao();
-  const arquivo = formData.get('arquivo');
-  const senha = String(formData.get('senha') ?? '').trim() || undefined;
-  if (!(arquivo instanceof File) || arquivo.size === 0) return { erro: 'Selecione o PDF da fatura.' };
+type ResultadoFatura = { id: string; nova: boolean } | { erro: string; precisaSenha?: boolean };
+
+/** Lê um PDF de fatura, grava a fatura e os lançamentos e concilia. */
+async function processarFatura(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  arquivo: File,
+  senha: string | undefined
+): Promise<ResultadoFatura> {
   if (!arquivo.name.toLowerCase().endsWith('.pdf')) return { erro: 'O arquivo precisa ser PDF.' };
 
   const bytes = new Uint8Array(await arquivo.arrayBuffer());
   const hash = createHash('sha256').update(bytes).digest('hex');
-  const supabase = createClient();
 
   const { data: existente } = await supabase
     .from('cartao_faturas')
@@ -51,7 +54,7 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
     .eq('arquivo_hash', hash)
     .eq('criado_por', userId)
     .maybeSingle();
-  if (existente) redirect(`/admin/cartao/${existente.id}`);
+  if (existente) return { id: existente.id, nova: false };
 
   let linhas: string[];
   try {
@@ -114,8 +117,45 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
   }
 
   await conciliarFatura(supabase, nova.id);
+  return { id: nova.id, nova: true };
+}
+
+/**
+ * Envia uma ou várias faturas (uma por empresa/cartão). Com uma só, abre a
+ * fatura; com várias, fica na lista e mostra o resultado de cada arquivo.
+ */
+export async function enviarFatura(_prev: FormResultado | undefined, formData: FormData): Promise<FormResultado> {
+  const { userId } = await requireCartao();
+  const arquivos = formData.getAll('arquivo').filter((f): f is File => f instanceof File && f.size > 0);
+  const senha = String(formData.get('senha') ?? '').trim() || undefined;
+  if (!arquivos.length) return { erro: 'Selecione o PDF da fatura.' };
+
+  const supabase = createClient();
+  if (arquivos.length === 1) {
+    const r = await processarFatura(supabase, userId, arquivos[0], senha);
+    if ('erro' in r) return { erro: r.erro, precisaSenha: r.precisaSenha };
+    revalidarCartao();
+    redirect(r.nova ? `/admin/cartao/${r.id}?nova=1` : `/admin/cartao/${r.id}`);
+  }
+
+  const ok: string[] = [];
+  const falhas: string[] = [];
+  let precisaSenha = false;
+  for (const arquivo of arquivos) {
+    const r = await processarFatura(supabase, userId, arquivo, senha);
+    if ('erro' in r) {
+      falhas.push(`${arquivo.name}: ${r.erro}`);
+      precisaSenha ||= Boolean(r.precisaSenha);
+    } else {
+      ok.push(r.nova ? arquivo.name : `${arquivo.name} (já tinha sido enviada)`);
+    }
+  }
   revalidarCartao();
-  redirect(`/admin/cartao/${nova.id}?nova=1`);
+  return {
+    mensagem: ok.length ? `${ok.length} fatura(s) importada(s) e conciliada(s): ${ok.join(', ')}.` : undefined,
+    erro: falhas.length ? `Não importadas: ${falhas.join(' | ')}` : undefined,
+    precisaSenha,
+  };
 }
 
 export async function reconciliarFatura(formData: FormData) {

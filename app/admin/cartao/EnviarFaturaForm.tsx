@@ -15,7 +15,7 @@ function Enviar() {
       </Button>
       {pending && (
         <span className="max-w-56 text-label text-on-surface-variant">
-          Fatura salva como imagem leva 1 a 2 minutos para ler. Não feche a página.
+          Fatura salva como imagem leva 1 a 2 minutos cada. Não feche a página.
         </span>
       )}
     </div>
@@ -29,11 +29,14 @@ export function EnviarFaturaForm() {
     <form action={formAction}>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-64 flex-1">
-          <label className="mb-1 block text-label text-on-surface-variant">PDF da fatura</label>
+          <label className="mb-1 block text-label text-on-surface-variant">
+            PDF da fatura (pode marcar várias, uma por empresa)
+          </label>
           <input
             name="arquivo"
             type="file"
             accept="application/pdf,.pdf"
+            multiple
             required
             className="block w-full text-body-sm text-on-surface file:mr-3 file:rounded-md file:border-0 file:bg-primary-fixed file:px-3 file:py-2 file:text-body-sm file:font-medium file:text-primary"
           />

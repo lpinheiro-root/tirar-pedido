@@ -8,8 +8,8 @@ const nextConfig = {
   },
   experimental: {
     serverComponentsExternalPackages: ['mssql', 'exceljs', 'unpdf', 'xml-crypto', 'node-forge', 'tesseract.js'],
-    // faturas em PDF passam do limite padrão de 1 MB das server actions
-    serverActions: { bodySizeLimit: '15mb' },
+    // faturas em PDF (várias de uma vez, às vezes como imagem) passam do limite padrão de 1 MB
+    serverActions: { bodySizeLimit: '50mb' },
   },
 };
 
