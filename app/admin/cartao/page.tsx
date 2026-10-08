@@ -62,6 +62,17 @@ export default async function CartaoFaturasPage() {
         </CardContent>
       </Card>
 
+      {faturas.length > 0 && (
+        <div className="mb-3 flex justify-end">
+          <a
+            href="/api/cartao/faturas/exportar"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
+          >
+            <IconDownload width={16} height={16} /> Baixar todas (planilha Cartões)
+          </a>
+        </div>
+      )}
+
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
