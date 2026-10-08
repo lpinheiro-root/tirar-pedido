@@ -7,6 +7,7 @@ import { IconDownload, IconEye } from '@/components/ui/Icons';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { BANCO_LABEL } from '@/lib/cartao/rotulos';
 import { EnviarFaturaForm } from './EnviarFaturaForm';
+import { ExcluirFaturaBotao } from './ExcluirFaturaBotao';
 
 interface FaturaLista {
   id: string;
@@ -125,6 +126,7 @@ export default async function CartaoFaturasPage() {
                       >
                         <IconEye width={16} height={16} /> Abrir
                       </Link>
+                      <ExcluirFaturaBotao faturaId={f.id} nome={f.arquivo_nome} />
                     </td>
                   </tr>
                 );
