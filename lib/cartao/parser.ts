@@ -91,8 +91,12 @@ export function extrairVencimento(texto: string): string | null {
 }
 
 export function extrairTotal(texto: string): number | null {
+  // Santander: "Fatura anterior - Pagamentos = Saldo + Despesas = Total" (17.960,66 - 18.090,93 = -130,27 + 23.033,34 = 22.903,07)
+  const resumo = texto.match(/=\s*-?[\d.,]+\s*\+\s*[\d.,]+\s*=\s*(\d{1,3}(?:\.\d{3})*,\d{2})\b/);
+  if (resumo) return parseValorBR(resumo[1]);
+  // "com valor total de" / "valor total a pagar" são da oferta de parcelamento, não da fatura
   const m = texto.match(
-    /(?:total (?:desta|da) fatura|total a pagar|valor total|total da sua fatura)[^\d\n]{0,40}(\d{1,3}(?:\.\d{3})*,\d{2})/i
+    /(?:total (?:desta|da) fatura|total a pagar|(?<!com )valor total(?! a pagar)|total da sua fatura)[^\d\n]{0,40}(\d{1,3}(?:\.\d{3})*,\d{2})/i
   );
   return m ? parseValorBR(m[1]) : null;
 }
@@ -175,7 +179,9 @@ function parseSegmento(
 
   let descricao = resto.slice(0, valores[0].index).replace(/\b(?:R\$|US\$|USD|BRL)\s*$/i, '');
   descricao = descricao.replace(/\s+/g, ' ').trim();
-  if (!/[A-Za-zÀ-ú]{2,}/.test(descricao) || RESUMO_RE.test(descricao)) return null;
+  // compra internacional pode vir com descrição só de códigos ("D38163785 18007220081 ... USD"): vale a sigla da moeda
+  const temTexto = /[A-Za-zÀ-ú]{2,}/.test(descricao) || /\b(?:USD|EUR|GBP|BRL)\b/.test(resto);
+  if (!temTexto || RESUMO_RE.test(descricao)) return null;
 
   const parcela = extrairParcela(descricao);
   return {
@@ -196,7 +202,7 @@ export function parseLinhas(linhas: string[]): FaturaExtraida {
   let cartaoFinal: string | null = null;
 
   for (const linha of linhas) {
-    const final = linha.match(/final\s*:?\s*(\d{4})\b/i);
+    const final = linha.match(/final\s*:?\s*(\d{4})\b/i) ?? linha.match(/\b\d{4}\s*X{4}\s*X{4}\s*(\d{4})\b/i);
     if (final) cartaoFinal = final[1];
 
     const inicios = Array.from(linha.matchAll(INICIO_RE)).map(

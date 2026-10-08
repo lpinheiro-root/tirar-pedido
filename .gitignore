@@ -27,3 +27,4 @@ ferramentas/**/*.env
 ferramentas/**/.env
 ferramentas/**/estado.json
 ferramentas/**/node_modules/
+/.cache

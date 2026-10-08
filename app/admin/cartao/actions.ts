@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { requireCartao } from '@/lib/auth';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { extrairLinhasPdf, PdfSenhaError } from '@/lib/cartao/pdf';
+import { ocrPdf } from '@/lib/cartao/ocr';
 import { parseLinhas } from '@/lib/cartao/parser';
 import { avaliar } from '@/lib/cartao/conciliacao';
 import {
@@ -60,13 +61,23 @@ export async function enviarFatura(_prev: FormResultado | undefined, formData: F
     return { erro: 'Não foi possível ler o PDF. Verifique se é a fatura original do banco.' };
   }
 
+  // PDF sem texto (fatura salva como imagem): lê pelo OCR
+  const porImagem = linhas.length === 0;
+  if (porImagem) {
+    try {
+      linhas = await ocrPdf(bytes);
+    } catch (e) {
+      console.error('[cartao/ocr]', e);
+      linhas = [];
+    }
+  }
+
   const fatura = parseLinhas(linhas);
   if (fatura.lancamentos.length === 0) {
     return {
-      erro:
-        linhas.length === 0
-          ? 'O PDF não tem texto (parece ser imagem escaneada). Baixe a fatura original no app/site do banco.'
-          : 'Nenhum lançamento foi reconhecido nesta fatura.',
+      erro: porImagem
+        ? 'O PDF é uma imagem e a leitura automática não achou lançamentos. Baixe a fatura original no app/site do banco.'
+        : 'Nenhum lançamento foi reconhecido nesta fatura.',
     };
   }
 

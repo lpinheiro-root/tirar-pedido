@@ -9,9 +9,16 @@ import { FormMensagem } from './FormMensagem';
 function Enviar() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
-      {pending ? 'Lendo fatura...' : 'Enviar e conciliar'}
-    </Button>
+    <div className="flex flex-col items-start gap-1">
+      <Button type="submit" disabled={pending}>
+        {pending ? 'Lendo fatura...' : 'Enviar e conciliar'}
+      </Button>
+      {pending && (
+        <span className="max-w-56 text-label text-on-surface-variant">
+          Fatura salva como imagem leva 1 a 2 minutos para ler. Não feche a página.
+        </span>
+      )}
+    </div>
   );
 }
 
