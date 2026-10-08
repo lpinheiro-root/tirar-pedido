@@ -58,7 +58,8 @@ async function processarFatura(
 
   let linhas: string[];
   try {
-    linhas = await extrairLinhasPdf(bytes, senha);
+    // cópia: o pdf.js transfere (esvazia) o buffer que recebe, e o OCR ainda precisa dele
+    linhas = await extrairLinhasPdf(bytes.slice(), senha);
   } catch (e) {
     if (e instanceof PdfSenhaError) return { erro: e.message, precisaSenha: true };
     return { erro: 'Não foi possível ler o PDF. Verifique se é a fatura original do banco.' };
