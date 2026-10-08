@@ -1,15 +1,27 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { requireCartao } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
-import { PageHeading } from '@/components/layout/Header';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { formatCurrency, formatDate } from '@/lib/format';
-import { IconDownload } from '@/components/ui/Icons';
-import { BANCO_LABEL, ORIGEM_LABEL, TIPO_LABEL, type StatusLancamento } from '@/lib/cartao/rotulos';
-import { StatusLancamentoBadge } from '../StatusLancamentoBadge';
-import { desvincular, excluirFatura, marcarResolvido, reconciliarFatura, vincularManual } from '../actions';
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireCartao } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { PageHeading } from "@/components/layout/Header";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { IconDownload } from "@/components/ui/Icons";
+import {
+  BANCO_LABEL,
+  ORIGEM_LABEL,
+  TIPO_LABEL,
+  type StatusLancamento,
+} from "@/lib/cartao/rotulos";
+import { StatusLancamentoBadge } from "../StatusLancamentoBadge";
+import {
+  desvincular,
+  excluirFatura,
+  marcarResolvido,
+  reconciliarFatura,
+  vincularManual,
+} from "../actions";
+import { donoDasCompras } from "@/lib/cartao/conciliacaoDb";
 
 interface Compra {
   id: string;
@@ -22,6 +34,7 @@ interface Compra {
   valor_total: number;
   parcelas: number;
   valor_parcela: number | null;
+  pedidos: string[] | null;
 }
 
 interface Lancamento {
@@ -34,31 +47,47 @@ interface Lancamento {
   parcela_total: number | null;
   cartao_final: string | null;
   status: StatusLancamento;
-  vinculo: 'auto' | 'manual' | null;
+  vinculo: "auto" | "manual" | null;
   diferenca: number | null;
   observacao: string | null;
   cartao_compras: Compra | null;
 }
 
 const FILTROS: { value: string; label: string }[] = [
-  { value: 'compras', label: 'Todas as compras' },
-  { value: 'pendente', label: 'Sem compra' },
-  { value: 'divergente', label: 'Divergentes' },
-  { value: 'conciliado', label: 'Conciliadas' },
-  { value: 'ignorado', label: 'Resolvidas' },
-  { value: 'outros', label: 'Pagamentos, estornos e encargos' },
+  { value: "compras", label: "Todas as compras" },
+  { value: "mercadolivre", label: "Mercado Livre (lado a lado)" },
+  { value: "pendente", label: "Sem compra" },
+  { value: "divergente", label: "Divergentes" },
+  { value: "conciliado", label: "Conciliadas" },
+  { value: "ignorado", label: "Resolvidas" },
+  { value: "outros", label: "Pagamentos, estornos e encargos" },
 ];
 
 const DIA_MS = 86_400_000;
 
 function dataCurta(iso: string) {
-  return new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
 
 function valorEsperado(c: Compra, l: Lancamento): number {
-  const parcelas = c.parcelas > 1 ? c.parcelas : l.parcela_total ?? 1;
+  const parcelas = c.parcelas > 1 ? c.parcelas : (l.parcela_total ?? 1);
   if (parcelas <= 1) return Number(c.valor_total);
-  return c.parcelas > 1 && c.valor_parcela ? Number(c.valor_parcela) : Number(c.valor_total) / parcelas;
+  return c.parcelas > 1 && c.valor_parcela
+    ? Number(c.valor_parcela)
+    : Number(c.valor_total) / parcelas;
+}
+
+/** lançamento do Mercado Livre / Mercado Pago (pelo nome na fatura ou pela compra vinculada) */
+function ehMercadoLivre(l: Lancamento) {
+  return (
+    l.cartao_compras?.origem === "mercadolivre" ||
+    /MERCADO\s*\*?\s*LIVRE|MERCADOL|MERCADO\s*\*|(?:^|\s)MP\s?\*|MERCADO\s?PAGO/i.test(
+      l.descricao,
+    )
+  );
 }
 
 function DescricaoCompra({ compra }: { compra: Compra }) {
@@ -66,12 +95,17 @@ function DescricaoCompra({ compra }: { compra: Compra }) {
     <div className="min-w-0">
       <p className="text-body-sm font-medium text-on-surface">
         {ORIGEM_LABEL[compra.origem] ?? compra.origem}
-        {compra.loja && compra.loja !== ORIGEM_LABEL[compra.origem] ? ` · ${compra.loja}` : ''}
+        {compra.loja && compra.loja !== ORIGEM_LABEL[compra.origem]
+          ? ` · ${compra.loja}`
+          : ""}
       </p>
-      <p className="max-w-72 truncate text-label text-on-surface-variant" title={compra.descricao ?? ''}>
+      <p
+        className="max-w-72 truncate text-label text-on-surface-variant"
+        title={compra.descricao ?? ""}
+      >
         {dataCurta(compra.data)} · {formatCurrency(Number(compra.valor_total))}
-        {compra.parcelas > 1 ? ` em ${compra.parcelas}x` : ''}
-        {compra.descricao ? ` · ${compra.descricao}` : ''}
+        {compra.parcelas > 1 ? ` em ${compra.parcelas}x` : ""}
+        {compra.descricao ? ` · ${compra.descricao}` : ""}
       </p>
     </div>
   );
@@ -88,42 +122,62 @@ export default async function FaturaPage({
   const supabase = createClient();
 
   const [{ data: fatura }, { data: lancData }] = await Promise.all([
-    supabase.from('cartao_faturas').select('*').eq('id', params.id).maybeSingle(),
     supabase
-      .from('cartao_lancamentos')
-      .select('*, cartao_compras(*)')
-      .eq('fatura_id', params.id)
-      .order('ordem'),
+      .from("cartao_faturas")
+      .select("*")
+      .eq("id", params.id)
+      .maybeSingle(),
+    supabase
+      .from("cartao_lancamentos")
+      .select("*, cartao_compras(*)")
+      .eq("fatura_id", params.id)
+      .order("ordem"),
   ]);
   if (!fatura) notFound();
   const lancamentos = (lancData ?? []) as Lancamento[];
-  const compras = lancamentos.filter((l) => l.tipo === 'compra');
+  const compras = lancamentos.filter((l) => l.tipo === "compra");
 
-  const filtro = searchParams.filtro ?? 'compras';
+  const filtro = searchParams.filtro ?? "compras";
   const visiveis =
-    filtro === 'outros'
-      ? lancamentos.filter((l) => l.tipo !== 'compra')
-      : filtro === 'compras'
+    filtro === "outros"
+      ? lancamentos.filter((l) => l.tipo !== "compra")
+      : filtro === "compras"
         ? compras
-        : compras.filter((l) => l.status === filtro);
+        : filtro === "mercadolivre"
+          ? compras.filter(ehMercadoLivre)
+          : compras.filter((l) => l.status === filtro);
 
   // candidatos para vínculo manual: compras do período ordenadas pela diferença de valor
-  const abertos = visiveis.filter((l) => l.tipo === 'compra' && l.status !== 'conciliado' && l.status !== 'ignorado');
+  const abertos = visiveis.filter(
+    (l) =>
+      l.tipo === "compra" &&
+      l.status !== "conciliado" &&
+      l.status !== "ignorado",
+  );
   const candidatosPorLanc = new Map<string, Compra[]>();
   if (abertos.length) {
     const datas = abertos.map((l) => l.data).sort();
-    const inicio = new Date(Date.parse(datas[0]) - 400 * DIA_MS).toISOString().slice(0, 10);
-    const fim = new Date(Date.parse(datas[datas.length - 1]) + 5 * DIA_MS).toISOString().slice(0, 10);
-    const { data: periodo } = await supabase
-      .from('cartao_compras')
-      .select('*')
-      .eq('usuario_id', fatura.criado_por)
-      .gte('data', inicio)
-      .lte('data', fim)
+    const inicio = new Date(Date.parse(datas[0]) - 400 * DIA_MS)
+      .toISOString()
+      .slice(0, 10);
+    const fim = new Date(Date.parse(datas[datas.length - 1]) + 5 * DIA_MS)
+      .toISOString()
+      .slice(0, 10);
+    const dono = await donoDasCompras(supabase, fatura.criado_por);
+    let consulta = supabase
+      .from("cartao_compras")
+      .select("*")
+      .gte("data", inicio)
+      .lte("data", fim)
       .limit(2000);
+    if (dono) consulta = consulta.eq("usuario_id", dono);
+    const { data: periodo } = await consulta;
     for (const l of abertos) {
       const candidatos = ((periodo ?? []) as Compra[])
-        .map((c) => ({ c, diff: Math.abs(valorEsperado(c, l) - Number(l.valor)) }))
+        .map((c) => ({
+          c,
+          diff: Math.abs(valorEsperado(c, l) - Number(l.valor)),
+        }))
         .filter(({ diff }) => diff <= Math.max(5, Number(l.valor) * 0.3))
         .sort((a, b) => a.diff - b.diff)
         .slice(0, 8)
@@ -132,18 +186,22 @@ export default async function FaturaPage({
     }
   }
 
-  const soma = (lista: Lancamento[]) => lista.reduce((s, l) => s + Number(l.valor), 0);
+  const soma = (lista: Lancamento[]) =>
+    lista.reduce((s, l) => s + Number(l.valor), 0);
   const resumo: { status: StatusLancamento; itens: Lancamento[] }[] = (
-    ['conciliado', 'divergente', 'pendente', 'ignorado'] as StatusLancamento[]
-  ).map((status) => ({ status, itens: compras.filter((l) => l.status === status) }));
-  const somaLida = soma(lancamentos.filter((l) => l.tipo !== 'pagamento'));
+    ["conciliado", "divergente", "pendente", "ignorado"] as StatusLancamento[]
+  ).map((status) => ({
+    status,
+    itens: compras.filter((l) => l.status === status),
+  }));
+  const somaLida = soma(lancamentos.filter((l) => l.tipo !== "pagamento"));
 
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           title={`Fatura ${BANCO_LABEL[fatura.banco] ?? fatura.banco}`}
-          subtitle={`${fatura.vencimento ? `Vencimento ${formatDate(`${fatura.vencimento}T12:00:00`)} · ` : ''}${fatura.arquivo_nome}`}
+          subtitle={`${fatura.vencimento ? `Vencimento ${formatDate(`${fatura.vencimento}T12:00:00`)} · ` : ""}${fatura.arquivo_nome}`}
         />
         <div className="flex gap-2">
           <a
@@ -170,10 +228,13 @@ export default async function FaturaPage({
       {searchParams.nova && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-5 py-4">
           <div>
-            <p className="text-body font-semibold text-green-800">Fatura lida e conciliada</p>
+            <p className="text-body font-semibold text-green-800">
+              Fatura lida e conciliada
+            </p>
             <p className="text-body-sm text-green-800">
-              {compras.length} compra(s) na fatura: {resumo[0].itens.length} conciliada(s),{' '}
-              {resumo[1].itens.length} divergente(s) e {resumo[2].itens.length} sem compra.
+              {compras.length} compra(s) na fatura: {resumo[0].itens.length}{" "}
+              conciliada(s), {resumo[1].itens.length} divergente(s) e{" "}
+              {resumo[2].itens.length} sem compra.
             </p>
           </div>
           <a
@@ -187,19 +248,27 @@ export default async function FaturaPage({
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Card className="p-4">
-          <p className="text-label uppercase text-on-surface-variant">Total da fatura</p>
-          <p className="mt-1 text-h2 text-on-surface">
-            {fatura.total != null ? formatCurrency(Number(fatura.total)) : '—'}
+          <p className="text-label uppercase text-on-surface-variant">
+            Total da fatura
           </p>
-          <p className="mt-1 text-label text-on-surface-variant">Lido no PDF: {formatCurrency(somaLida)}</p>
+          <p className="mt-1 text-h2 text-on-surface">
+            {fatura.total != null ? formatCurrency(Number(fatura.total)) : "—"}
+          </p>
+          <p className="mt-1 text-label text-on-surface-variant">
+            Lido no PDF: {formatCurrency(somaLida)}
+          </p>
         </Card>
         {resumo.map(({ status, itens }) => (
           <Card key={status} className="p-4">
             <div className="flex items-center justify-between">
               <StatusLancamentoBadge status={status} />
-              <span className="text-body-sm text-on-surface-variant">{itens.length}</span>
+              <span className="text-body-sm text-on-surface-variant">
+                {itens.length}
+              </span>
             </div>
-            <p className="mt-2 text-h2 text-on-surface">{formatCurrency(soma(itens))}</p>
+            <p className="mt-2 text-h2 text-on-surface">
+              {formatCurrency(soma(itens))}
+            </p>
           </Card>
         ))}
       </div>
@@ -208,11 +277,15 @@ export default async function FaturaPage({
         {FILTROS.map((f) => (
           <Link
             key={f.value}
-            href={f.value === 'compras' ? `/admin/cartao/${fatura.id}` : `/admin/cartao/${fatura.id}?filtro=${f.value}`}
+            href={
+              f.value === "compras"
+                ? `/admin/cartao/${fatura.id}`
+                : `/admin/cartao/${fatura.id}?filtro=${f.value}`
+            }
             className={`rounded-full px-3 py-1.5 text-body-sm font-medium ${
               filtro === f.value
-                ? 'bg-primary text-on-primary'
-                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
+                ? "bg-primary text-on-primary"
+                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
             }`}
           >
             {f.label}
@@ -220,60 +293,293 @@ export default async function FaturaPage({
         ))}
       </div>
 
+      {filtro === "mercadolivre" ? (
+        <LadoALadoMercadoLivre
+          lancamentos={visiveis}
+          candidatosPorLanc={candidatosPorLanc}
+        />
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-surface-container-low">
+                <tr className="text-label uppercase text-on-surface-variant">
+                  <th className="px-4 py-3 font-medium">Data</th>
+                  <th className="px-4 py-3 font-medium">Lançamento</th>
+                  <th className="px-4 py-3 text-right font-medium">Valor</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Compra no site</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((l) => (
+                  <tr
+                    key={l.id}
+                    className="border-t border-border-muted align-top"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 text-body-sm text-on-surface-variant">
+                      {dataCurta(l.data)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-body text-on-surface">{l.descricao}</p>
+                      <p className="text-label text-on-surface-variant">
+                        {l.parcela_atual
+                          ? `Parcela ${l.parcela_atual}/${l.parcela_total}`
+                          : "À vista"}
+                        {l.cartao_final ? ` · final ${l.cartao_final}` : ""}
+                        {l.tipo !== "compra" ? ` · ${TIPO_LABEL[l.tipo]}` : ""}
+                      </p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-body font-medium text-on-surface">
+                      {formatCurrency(Number(l.valor))}
+                    </td>
+                    <td className="px-4 py-3">
+                      {l.tipo === "compra" ? (
+                        <>
+                          <StatusLancamentoBadge status={l.status} />
+                          {l.vinculo && (
+                            <p className="mt-1 text-label text-on-surface-variant">
+                              {l.vinculo === "auto" ? "automático" : "manual"}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-body-sm text-on-surface-variant">
+                          —
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {l.tipo === "compra" && (
+                        <LinhaAcoes
+                          lancamento={l}
+                          candidatos={candidatosPorLanc.get(l.id) ?? []}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {visiveis.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-body-sm text-on-surface-variant"
+                    >
+                      Nenhum lançamento neste filtro.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Mercado Livre: o lançamento da fatura de um lado, a compra no ML do outro e se o valor confere. */
+function LadoALadoMercadoLivre({
+  lancamentos,
+  candidatosPorLanc,
+}: {
+  lancamentos: Lancamento[];
+  candidatosPorLanc: Map<string, Compra[]>;
+}) {
+  const soma = (lista: Lancamento[]) =>
+    lista.reduce((s, l) => s + Number(l.valor), 0);
+  const conferem = lancamentos.filter((l) => l.status === "conciliado");
+  const diferenca = lancamentos.filter((l) => l.status === "divergente");
+  const semCompra = lancamentos.filter((l) => l.status === "pendente");
+  const resolvidos = lancamentos.filter((l) => l.status === "ignorado");
+  const th = "px-3 py-2 font-medium";
+
+  return (
+    <>
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          {
+            t: `Na fatura (${lancamentos.length})`,
+            v: soma(lancamentos),
+            c: "text-on-surface",
+          },
+          {
+            t: `Conferem (${conferem.length})`,
+            v: soma(conferem),
+            c: "text-green-700",
+          },
+          {
+            t: `Com diferença (${diferenca.length})`,
+            v: soma(diferenca),
+            c: diferenca.length ? "text-amber-700" : "text-on-surface",
+          },
+          {
+            t: `Sem compra no ML (${semCompra.length})`,
+            v: soma(semCompra),
+            c: semCompra.length ? "text-error" : "text-on-surface",
+          },
+        ].map((k) => (
+          <Card key={k.t} className="p-4">
+            <p className="text-label uppercase text-on-surface-variant">
+              {k.t}
+            </p>
+            <p className={`mt-1 text-h2 ${k.c}`}>{formatCurrency(k.v)}</p>
+          </Card>
+        ))}
+      </div>
+      {semCompra.length > 0 && (
+        <p className="mb-3 text-body-sm text-on-surface-variant">
+          &quot;Sem compra no ML&quot;: o pedido não está no sistema.
+          Normalmente é de uma conta do Mercado Livre que ainda não foi
+          conectada em{" "}
+          <Link
+            href="/admin/cartao/integracoes"
+            className="font-medium text-primary hover:underline"
+          >
+            Integrações
+          </Link>
+          {resolvidos.length
+            ? `; ${resolvidos.length} já marcado(s) como resolvido(s)`
+            : ""}
+          .
+        </p>
+      )}
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-surface-container-low">
-              <tr className="text-label uppercase text-on-surface-variant">
-                <th className="px-4 py-3 font-medium">Data</th>
-                <th className="px-4 py-3 font-medium">Lançamento</th>
-                <th className="px-4 py-3 text-right font-medium">Valor</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Compra no site</th>
+          <table className="w-full text-left text-body-sm">
+            <thead>
+              <tr className="text-label font-semibold uppercase">
+                <th
+                  colSpan={4}
+                  className="bg-primary/10 px-3 py-2 text-primary"
+                >
+                  Na fatura do cartão
+                </th>
+                <th
+                  colSpan={5}
+                  className="bg-amber-50 px-3 py-2 text-amber-800"
+                >
+                  No Mercado Livre
+                </th>
+                <th className="bg-surface-container-low px-3 py-2 text-on-surface-variant">
+                  Confere?
+                </th>
+              </tr>
+              <tr className="bg-surface-container-low text-label uppercase text-on-surface-variant">
+                <th className={th}>Data</th>
+                <th className={th}>Lançamento</th>
+                <th className={th}>Parcela</th>
+                <th className={`${th} text-right`}>Valor</th>
+                <th className={th}>Data</th>
+                <th className={th}>Conta</th>
+                <th className={th}>Pedido / produto</th>
+                <th className={`${th} text-right`}>Total da compra</th>
+                <th className={`${th} text-right`}>Valor esperado</th>
+                <th className={th} />
               </tr>
             </thead>
             <tbody>
-              {visiveis.map((l) => (
-                <tr key={l.id} className="border-t border-border-muted align-top">
-                  <td className="whitespace-nowrap px-4 py-3 text-body-sm text-on-surface-variant">
-                    {dataCurta(l.data)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-body text-on-surface">{l.descricao}</p>
-                    <p className="text-label text-on-surface-variant">
-                      {l.parcela_atual ? `Parcela ${l.parcela_atual}/${l.parcela_total}` : 'À vista'}
-                      {l.cartao_final ? ` · final ${l.cartao_final}` : ''}
-                      {l.tipo !== 'compra' ? ` · ${TIPO_LABEL[l.tipo]}` : ''}
-                    </p>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-body font-medium text-on-surface">
-                    {formatCurrency(Number(l.valor))}
-                  </td>
-                  <td className="px-4 py-3">
-                    {l.tipo === 'compra' ? (
+              {lancamentos.map((l) => {
+                const c = l.cartao_compras;
+                const esperado = c ? valorEsperado(c, l) : null;
+                return (
+                  <tr
+                    key={l.id}
+                    className="border-t border-border-muted align-top"
+                  >
+                    <td className="whitespace-nowrap px-3 py-2 text-on-surface-variant">
+                      {dataCurta(l.data)}
+                    </td>
+                    <td className="max-w-52 px-3 py-2 text-on-surface">
+                      {l.descricao}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-on-surface-variant">
+                      {l.parcela_atual
+                        ? `${l.parcela_atual}/${l.parcela_total}`
+                        : "à vista"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-on-surface">
+                      {formatCurrency(Number(l.valor))}
+                    </td>
+                    {c ? (
                       <>
-                        <StatusLancamentoBadge status={l.status} />
-                        {l.vinculo && (
-                          <p className="mt-1 text-label text-on-surface-variant">
-                            {l.vinculo === 'auto' ? 'automático' : 'manual'}
+                        <td className="whitespace-nowrap px-3 py-2 text-on-surface-variant">
+                          {dataCurta(c.data)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-on-surface-variant">
+                          {c.conta ?? "—"}
+                        </td>
+                        <td className="max-w-72 px-3 py-2">
+                          <p className="text-label text-on-surface-variant">
+                            {c.pedidos?.length
+                              ? `Pedido ${c.pedidos.join(", ")}`
+                              : (c.pedido_externo ?? "")}
                           </p>
-                        )}
+                          <p
+                            className="truncate text-on-surface"
+                            title={c.descricao ?? ""}
+                          >
+                            {c.descricao ?? c.loja ?? ""}
+                          </p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right text-on-surface">
+                          {formatCurrency(Number(c.valor_total))}
+                          {c.parcelas > 1 && (
+                            <span className="block text-label text-on-surface-variant">
+                              em {c.parcelas}x
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-on-surface">
+                          {esperado != null ? formatCurrency(esperado) : "—"}
+                        </td>
                       </>
                     ) : (
-                      <span className="text-body-sm text-on-surface-variant">—</span>
+                      <td colSpan={5} className="px-3 py-2">
+                        {l.status === "ignorado" ? (
+                          <p className="text-label text-on-surface-variant">
+                            {l.observacao ?? "Resolvido sem compra."}
+                          </p>
+                        ) : (
+                          <LinhaAcoes
+                            lancamento={l}
+                            candidatos={candidatosPorLanc.get(l.id) ?? []}
+                          />
+                        )}
+                      </td>
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {l.tipo === 'compra' && (
-                      <LinhaAcoes lancamento={l} candidatos={candidatosPorLanc.get(l.id) ?? []} />
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {visiveis.length === 0 && (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {l.status === "conciliado" && (
+                        <span className="rounded-sm bg-green-100 px-2 py-0.5 text-label font-medium text-green-700">
+                          ✓ Confere
+                        </span>
+                      )}
+                      {l.status === "divergente" && (
+                        <span className="rounded-sm bg-amber-100 px-2 py-0.5 text-label font-medium text-amber-800">
+                          Diferença {formatCurrency(Number(l.diferenca ?? 0))}
+                        </span>
+                      )}
+                      {l.status === "pendente" && (
+                        <span className="rounded-sm bg-error-container px-2 py-0.5 text-label font-medium text-error-on-container">
+                          Sem compra
+                        </span>
+                      )}
+                      {l.status === "ignorado" && (
+                        <span className="rounded-sm bg-surface-container px-2 py-0.5 text-label font-medium text-on-surface-variant">
+                          Resolvido
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {lancamentos.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-body-sm text-on-surface-variant">
-                    Nenhum lançamento neste filtro.
+                  <td
+                    colSpan={10}
+                    className="px-4 py-8 text-center text-body-sm text-on-surface-variant"
+                  >
+                    Nenhum lançamento do Mercado Livre nesta fatura.
                   </td>
                 </tr>
               )}
@@ -281,36 +587,55 @@ export default async function FaturaPage({
           </table>
         </div>
       </Card>
-    </div>
+    </>
   );
 }
 
-function LinhaAcoes({ lancamento: l, candidatos }: { lancamento: Lancamento; candidatos: Compra[] }) {
+function LinhaAcoes({
+  lancamento: l,
+  candidatos,
+}: {
+  lancamento: Lancamento;
+  candidatos: Compra[];
+}) {
   const desfazer = (
     <form action={desvincular}>
       <input type="hidden" name="lancamentoId" value={l.id} />
-      <button type="submit" className="text-label font-medium text-on-surface-variant hover:text-error">
+      <button
+        type="submit"
+        className="text-label font-medium text-on-surface-variant hover:text-error"
+      >
         Desfazer
       </button>
     </form>
   );
 
-  if (l.status === 'conciliado' || l.status === 'divergente') {
+  if (l.status === "conciliado" || l.status === "divergente") {
     return (
       <div className="flex flex-col gap-1.5">
         {l.cartao_compras && <DescricaoCompra compra={l.cartao_compras} />}
-        {l.status === 'divergente' && l.diferenca != null && (
+        {l.status === "divergente" && l.diferenca != null && (
           <p className="text-label font-medium text-amber-800">
-            Diferença de {formatCurrency(Number(l.diferenca))} (frete, cupom ou juros?)
+            Diferença de {formatCurrency(Number(l.diferenca))} (frete, cupom ou
+            juros?)
           </p>
         )}
-        {l.observacao && <p className="text-label text-on-surface-variant">{l.observacao}</p>}
+        {l.observacao && (
+          <p className="text-label text-on-surface-variant">{l.observacao}</p>
+        )}
         <div className="flex gap-3">
-          {l.status === 'divergente' && (
+          {l.status === "divergente" && (
             <form action={marcarResolvido}>
               <input type="hidden" name="lancamentoId" value={l.id} />
-              <input type="hidden" name="observacao" value={`Diferença de ${formatCurrency(Number(l.diferenca))} aceita`} />
-              <button type="submit" className="text-label font-medium text-primary hover:underline">
+              <input
+                type="hidden"
+                name="observacao"
+                value={`Diferença de ${formatCurrency(Number(l.diferenca))} aceita`}
+              />
+              <button
+                type="submit"
+                className="text-label font-medium text-primary hover:underline"
+              >
                 Aceitar diferença
               </button>
             </form>
@@ -321,10 +646,12 @@ function LinhaAcoes({ lancamento: l, candidatos }: { lancamento: Lancamento; can
     );
   }
 
-  if (l.status === 'ignorado') {
+  if (l.status === "ignorado") {
     return (
       <div className="flex flex-col gap-1">
-        <p className="text-label text-on-surface-variant">{l.observacao ?? 'Resolvido sem compra vinculada.'}</p>
+        <p className="text-label text-on-surface-variant">
+          {l.observacao ?? "Resolvido sem compra vinculada."}
+        </p>
         {desfazer}
       </div>
     );
@@ -343,8 +670,10 @@ function LinhaAcoes({ lancamento: l, candidatos }: { lancamento: Lancamento; can
             <option value="">Vincular a uma compra…</option>
             {candidatos.map((c) => (
               <option key={c.id} value={c.id}>
-                {dataCurta(c.data)} · {ORIGEM_LABEL[c.origem] ?? c.origem} · {formatCurrency(Number(c.valor_total))}
-                {c.parcelas > 1 ? ` (${c.parcelas}x)` : ''} · {(c.descricao ?? c.loja ?? '').slice(0, 40)}
+                {dataCurta(c.data)} · {ORIGEM_LABEL[c.origem] ?? c.origem} ·{" "}
+                {formatCurrency(Number(c.valor_total))}
+                {c.parcelas > 1 ? ` (${c.parcelas}x)` : ""} ·{" "}
+                {(c.descricao ?? c.loja ?? "").slice(0, 40)}
               </option>
             ))}
           </select>
@@ -354,8 +683,11 @@ function LinhaAcoes({ lancamento: l, candidatos }: { lancamento: Lancamento; can
         </form>
       ) : (
         <p className="text-label text-on-surface-variant">
-          Nenhuma compra com valor parecido.{' '}
-          <Link href="/admin/cartao/compras" className="font-medium text-primary hover:underline">
+          Nenhuma compra com valor parecido.{" "}
+          <Link
+            href="/admin/cartao/compras"
+            className="font-medium text-primary hover:underline"
+          >
             Cadastrar compra
           </Link>
         </p>
@@ -367,7 +699,10 @@ function LinhaAcoes({ lancamento: l, candidatos }: { lancamento: Lancamento; can
           placeholder="Motivo (ex.: assinatura, compra em loja física)"
           className="h-8 w-64 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-2 text-label text-on-surface placeholder:text-outline"
         />
-        <button type="submit" className="text-label font-medium text-on-surface-variant hover:text-primary">
+        <button
+          type="submit"
+          className="text-label font-medium text-on-surface-variant hover:text-primary"
+        >
           Resolver sem compra
         </button>
       </form>

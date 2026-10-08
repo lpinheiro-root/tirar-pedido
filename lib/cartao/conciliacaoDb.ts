@@ -37,14 +37,23 @@ export function lancamentoConciliavel(l: Record<string, unknown>) {
 }
 
 /**
- * Concilia automaticamente os lançamentos de compra ainda pendentes de uma fatura,
- * só contra as compras do dono da fatura (o super admin enxerga tudo, mas não
- * pode misturar compras de um usuário com a fatura de outro).
+ * De quem são as compras que podem casar com a fatura: as do próprio usuário
+ * que enviou. Fatura enviada pelo super admin (cartões da empresa) casa com as
+ * compras de todas as contas conectadas — devolve null (sem filtro).
+ */
+export async function donoDasCompras(supabase: Supabase, criadoPor: string): Promise<string | null> {
+  const { data } = await supabase.from('representantes').select('super_admin').eq('id', criadoPor).maybeSingle();
+  return data?.super_admin ? null : criadoPor;
+}
+
+/**
+ * Concilia automaticamente os lançamentos de compra ainda pendentes de uma fatura
+ * contra as compras de quem a enviou (ou de todos, se foi o super admin).
  */
 export async function conciliarFatura(supabase: Supabase, faturaId: string): Promise<number> {
   const { data: fatura } = await supabase
     .from('cartao_faturas')
-    .select('criado_por')
+    .select('criado_por, arquivo_hash')
     .eq('id', faturaId)
     .maybeSingle();
   if (!fatura?.criado_por) return 0;
@@ -60,20 +69,30 @@ export async function conciliarFatura(supabase: Supabase, faturaId: string): Pro
   const lancamentos = pendentes.map(lancamentoConciliavel);
   const datas = lancamentos.map((l) => l.data).sort();
   const maiorParcela = Math.max(1, ...lancamentos.map((l) => l.parcelaAtual ?? 1));
-  const { data: compras } = await supabase
+  const dono = await donoDasCompras(supabase, fatura.criado_por);
+  let consulta = supabase
     .from('cartao_compras')
     .select('*')
-    .eq('usuario_id', fatura.criado_por)
     .gte('data', somarDias(datas[0], -Math.ceil(maiorParcela * 31) - 10))
     .lte('data', somarDias(datas[datas.length - 1], 3));
+  if (dono) consulta = consulta.eq('usuario_id', dono);
+  const { data: compras } = await consulta;
   if (!compras?.length) return 0;
 
+  // parcela já usada em outra fatura não casa de novo — exceto em cópias do mesmo PDF
+  // (a mesma fatura enviada por duas pessoas, ex.: o usuário e o super admin)
   const { data: jaVinculados } = await supabase
     .from('cartao_lancamentos')
-    .select('compra_id, parcela_atual')
+    .select('compra_id, parcela_atual, cartao_faturas!inner(arquivo_hash)')
     .in('compra_id', compras.map((c) => c.id));
   const usadas = new Set(
-    (jaVinculados ?? []).map((v) => chaveParcela(v.compra_id as string, v.parcela_atual as number | null))
+    (jaVinculados ?? [])
+      .filter((v) => {
+        const f = v.cartao_faturas as unknown as { arquivo_hash: string } | { arquivo_hash: string }[] | null;
+        const hash = Array.isArray(f) ? f[0]?.arquivo_hash : f?.arquivo_hash;
+        return hash !== fatura.arquivo_hash;
+      })
+      .map((v) => chaveParcela(v.compra_id as string, v.parcela_atual as number | null))
   );
 
   const vinculos = conciliar(lancamentos, compras.map(compraConciliavel), usadas);
