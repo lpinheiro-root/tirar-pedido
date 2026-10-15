@@ -7,15 +7,17 @@ export interface FiltrosNFe {
   empresa: string; // CNPJ da empresa do grupo ou '' (todas)
   mes: string; // yyyy-mm ou '' (todos)
   busca: string; // cliente (nome ou documento) ou número da NFD
-  situacao: '' | 'abertas' | 'encerradas';
+  situacao: '' | 'abertas' | 'encerradas' | 'canceladas';
 }
+
+const SITUACOES = ['abertas', 'encerradas', 'canceladas'] as const;
 
 export function lerFiltros(params: Record<string, string | undefined>): FiltrosNFe {
   return {
     empresa: /^\d{14}$/.test(params.empresa ?? '') ? params.empresa! : '',
     mes: /^\d{4}-\d{2}$/.test(params.mes ?? '') ? params.mes! : '',
     busca: (params.busca ?? '').trim().slice(0, 80),
-    situacao: params.situacao === 'abertas' || params.situacao === 'encerradas' ? params.situacao : '',
+    situacao: (SITUACOES as readonly string[]).includes(params.situacao ?? '') ? (params.situacao as FiltrosNFe['situacao']) : '',
   };
 }
 
@@ -64,6 +66,15 @@ const COLUNAS =
   'id, chave, data_emissao, valor_total, situacao, cnpj_destinatario, nome_destinatario, empresa_uf, cliente_nome, cliente_doc, cliente_uf, notas_origem, transportadora, devolucao_origem, devolucoes_acompanhamento(motivo, volta_fabrica, retorno, transportadora, transportadora_debitada, pagamento_cliente, pagamento_feito, status, nf_fiscal)';
 
 /**
+ * Situação da NFD na tela: cancelada (no NF-Stock/SEFAZ) vale mais que o
+ * acompanhamento; senão, encerrada ou aberta pelo status preenchido pela equipe.
+ */
+export function situacaoDevolucao(d: Pick<Devolucao, 'situacao' | 'devolucoes_acompanhamento'>): 'cancelada' | 'encerrada' | 'aberta' {
+  if (d.situacao === 'cancelada') return 'cancelada';
+  return ocorrenciaEncerrada(d.devolucoes_acompanhamento?.status) ? 'encerrada' : 'aberta';
+}
+
+/**
  * Todas as devoluções do filtro (volume baixo: dezenas a centenas por mês).
  * A situação (aberta/encerrada) vem do status preenchido pela equipe, por isso
  * é filtrada aqui.
@@ -90,9 +101,6 @@ export async function buscarDevolucoes(supabase: SupabaseClient, f: FiltrosNFe):
     return q.order('data_emissao', { ascending: false }).order('chave').range(de, ate).returns<Devolucao[]>();
   });
   if (!f.situacao) return linhas;
-  return linhas.filter((d) =>
-    f.situacao === 'encerradas'
-      ? ocorrenciaEncerrada(d.devolucoes_acompanhamento?.status)
-      : !ocorrenciaEncerrada(d.devolucoes_acompanhamento?.status)
-  );
+  const alvo = ({ abertas: 'aberta', encerradas: 'encerrada', canceladas: 'cancelada' } as const)[f.situacao];
+  return linhas.filter((d) => situacaoDevolucao(d) === alvo);
 }

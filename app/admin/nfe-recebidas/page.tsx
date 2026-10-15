@@ -6,8 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { formatarCnpj } from '@/lib/empresas';
-import { buscarDevolucoes, filtrosParaUrl, lerFiltros } from '@/lib/nfeRecebidas';
-import { nomeEmpresaPlanilha, numeroDaChave, ocorrenciaEncerrada } from '@/lib/devolucoes';
+import { buscarDevolucoes, filtrosParaUrl, lerFiltros, situacaoDevolucao } from '@/lib/nfeRecebidas';
+import { nomeEmpresaPlanilha, numeroDaChave } from '@/lib/devolucoes';
 import { lerConfigNFe } from '@/lib/cartao/nfe';
 import { ImportarExcelForm } from './ImportarExcelForm';
 
@@ -59,7 +59,7 @@ export default async function NfeRecebidasPage({
 
   const total = devolucoes.length;
   const soma = devolucoes.reduce((s, d) => s + Number(d.valor_total ?? 0), 0);
-  const abertas = devolucoes.filter((d) => !ocorrenciaEncerrada(d.devolucoes_acompanhamento?.status)).length;
+  const abertas = devolucoes.filter((d) => situacaoDevolucao(d) === 'aberta').length;
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   const visiveis = devolucoes.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
@@ -102,6 +102,7 @@ export default async function NfeRecebidasPage({
               <option value="">Todas</option>
               <option value="abertas">Em aberto</option>
               <option value="encerradas">Encerradas</option>
+              <option value="canceladas">Canceladas</option>
             </select>
           </div>
           <button type="submit" className="h-9 rounded-md bg-primary px-4 text-body-sm font-medium text-on-primary hover:bg-primary/90">
@@ -180,7 +181,7 @@ export default async function NfeRecebidasPage({
           <tbody>
             {visiveis.map((d) => {
               const a = d.devolucoes_acompanhamento;
-              const encerrada = ocorrenciaEncerrada(a?.status);
+              const situacao = situacaoDevolucao(d);
               const origens = (d.notas_origem ?? []).map(numeroDaChave);
               return (
                 <tr key={d.id} className="border-t border-border-muted hover:bg-surface-container-low/50">
@@ -213,16 +214,16 @@ export default async function NfeRecebidasPage({
                   </td>
                   <td className="px-3 py-2.5">
                     <span
-                      title={a?.status ?? 'Sem status preenchido'}
+                      title={situacao === 'cancelada' ? 'NFD cancelada no NF-Stock' : (a?.status ?? 'Sem status preenchido')}
                       className={`inline-flex cursor-default whitespace-nowrap rounded-sm px-2 py-1 text-label font-medium ${
-                        d.situacao === 'cancelada'
+                        situacao === 'cancelada'
                           ? 'bg-error-container text-error-on-container'
-                          : encerrada
+                          : situacao === 'encerrada'
                             ? 'bg-green-100 text-green-700'
                             : 'bg-amber-100 text-amber-800'
                       }`}
                     >
-                      {d.situacao === 'cancelada' ? 'Cancelada' : encerrada ? 'Encerrada' : 'Em aberto'}
+                      {situacao === 'cancelada' ? 'Cancelada' : situacao === 'encerrada' ? 'Encerrada' : 'Em aberto'}
                     </span>
                   </td>
                   <td className="px-3 py-2.5">

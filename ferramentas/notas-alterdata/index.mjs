@@ -263,7 +263,11 @@ async function buscarNfstock(supabase, estado) {
   const ultima = estado.nfstock.ultimaRodada ? Date.parse(estado.nfstock.ultimaRodada) : 0;
   if (env.NFSTOCK_FORCAR !== '1' && Date.now() - ultima < intervalo) return '';
 
-  const { novas, listadas, marcarVistas } = await xmlsNovosDoNfstock(env, estado.nfstock, Number(env.NFSTOCK_DIAS ?? 40));
+  const { novas, canceladas, listadas, marcarVistas, marcarCanceladas } = await xmlsNovosDoNfstock(
+    env,
+    estado.nfstock,
+    Number(env.NFSTOCK_DIAS ?? 40)
+  );
 
   // CNPJs do grupo: lista guardada (veio do cadastro do Alterdata) + as empresas que
   // aparecem como destinatárias nas notas recebidas do NF-Stock (completa sozinha)
@@ -292,11 +296,25 @@ async function buscarNfstock(supabase, estado) {
     const { error } = await supabase.from('cartao_notas').upsert(gravar.slice(i, i + LOTE), { onConflict: 'chave' });
     if (error) throw new Error(`Supabase: ${error.message}`);
   }
-  marcarVistas(novas.map((n) => n.id));
+  marcarVistas(novas);
+
+  // notas canceladas no NF-Stock: marca as que já estão gravadas (de qualquer fonte)
+  let marcadas = 0;
+  if (canceladas.length) {
+    const { data, error } = await supabase
+      .from('cartao_notas')
+      .update({ situacao: 'cancelada', atualizado_em: new Date().toISOString() })
+      .in('chave', canceladas.map((c) => c.chave))
+      .neq('situacao', 'cancelada')
+      .select('chave');
+    if (error) throw new Error(`Supabase: ${error.message}`);
+    marcadas = data?.length ?? 0;
+    marcarCanceladas(canceladas);
+  }
   estado.nfstock.ultimaRodada = new Date().toISOString();
   salvarEstado(estado);
   const devolucoes = gravar.filter((n) => n.tipo === 'devolucao').length;
-  return `NF-Stock: ${listadas} listada(s), ${novas.length} nova(s), ${gravar.length} gravada(s) (${devolucoes} NFD)`;
+  return `NF-Stock: ${listadas} listada(s), ${novas.length} nova(s), ${gravar.length} gravada(s) (${devolucoes} NFD), ${marcadas} marcada(s) como cancelada`;
 }
 
 // ── rodada ──

@@ -67,7 +67,7 @@ class SessaoNfstock {
     }));
   }
 
-  /** IDs das NF-e recebidas pela empresa com emissão no período. */
+  /** NF-e recebidas pela empresa com emissão no período: [{ id, cancelada }]. */
   async idsRecebidas(empresaId, de, ate) {
     await this.req(`/Clientes/VisualizarCliente?id=${empresaId}`);
     const filtro = new URLSearchParams({
@@ -76,15 +76,19 @@ class SessaoNfstock {
       SituacaoManifestacao: '', Status: '', InscricaoEstadualDestinatario: '',
     });
     await this.req(`/Nfe/RecebidasFiltro?${filtro}`);
-    const ids = new Set();
+    const notas = new Map();
     for (let pagina = 1; pagina <= 100; pagina++) {
       const { texto } = await this.req(`/Nfe/Recebidas?pagina=${pagina}&tamanho=100`);
-      const daPagina = [...texto.matchAll(/<tr[^>]*data-id="(\d+)"/g)].map((m) => m[1]);
-      const antes = ids.size;
-      daPagina.forEach((id) => ids.add(id));
-      if (daPagina.length < 100 || ids.size === antes) break;
+      // status no ícone da coluna Status: title "Autorizada"/"Authorized", "Cancelada"/"Cancelled"...
+      const daPagina = [...texto.matchAll(/<tr[^>]*data-id="(\d+)"[\s\S]*?<\/tr>/g)].map((m) => ({
+        id: m[1],
+        cancelada: /cancel/i.test(m[0].match(/data-title="Status"[\s\S]*?title="([^"]*)"/)?.[1] ?? ''),
+      }));
+      const antes = notas.size;
+      daPagina.forEach((n) => notas.set(n.id, n));
+      if (daPagina.length < 100 || notas.size === antes) break;
     }
-    return [...ids];
+    return [...notas.values()];
   }
 
   async xml(idNota) {
@@ -96,11 +100,29 @@ class SessaoNfstock {
     if (status !== 200 || !/<(nfeProc|NFe)[\s>]/.test(texto)) return null;
     return texto;
   }
+
+  /**
+   * Chave de acesso de uma nota cancelada: o download dela vem num ZIP só com o
+   * evento de cancelamento, e a chave está no nome do arquivo (<chave>_evento_...xml).
+   */
+  async chaveCancelada(idNota) {
+    const { status, texto } = await this.req('/Downloads/NfeXml', {
+      method: 'POST',
+      body: JSON.stringify({ IdNota: idNota }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (status !== 200) return null;
+    return chaveDoXml(texto) ?? texto.match(/(\d{44})_evento/)?.[1] ?? null;
+  }
 }
+
+const chaveDoXml = (xml) => xml.match(/<chNFe>(\d{44})<\/chNFe>/)?.[1] ?? xml.match(/Id="NFe(\d{44})"/)?.[1] ?? null;
 
 /**
  * Notas novas do NF-Stock desde `dias` atrás. `estado.vistos` guarda os IDs já
- * baixados (com a data em que foram vistos) para não baixar de novo.
+ * baixados (com a data em que foram vistos) para não baixar de novo;
+ * `estado.chaves` a chave de cada ID e `estado.canceladas` os cancelamentos já
+ * gravados. Notas já baixadas que aparecem canceladas voltam em `canceladas`.
  */
 export async function xmlsNovosDoNfstock(env, estado, dias) {
   const sessao = new SessaoNfstock(env.NFSTOCK_URL);
@@ -109,23 +131,43 @@ export async function xmlsNovosDoNfstock(env, estado, dias) {
   const de = new Date(Date.now() - dias * 86_400_000);
   const hoje = ate.toISOString().slice(0, 10);
   estado.vistos ??= {};
+  estado.chaves ??= {};
+  estado.canceladas ??= {};
 
   const novas = [];
+  const canceladas = [];
   let listadas = 0;
   for (const empresa of await sessao.empresas()) {
-    const ids = await sessao.idsRecebidas(empresa.id, de, ate);
-    listadas += ids.length;
-    for (const id of ids) {
-      if (estado.vistos[id]) continue;
-      const xml = await sessao.xml(id);
-      if (xml) novas.push({ id, xml, empresa: empresa.nome });
+    const notas = await sessao.idsRecebidas(empresa.id, de, ate);
+    listadas += notas.length;
+    for (const { id, cancelada } of notas) {
+      if (cancelada) {
+        // cancelada: o NF-Stock não entrega mais o XML da nota, só o evento.
+        // Marca a nota já gravada (por esta ou outra fonte); a chave sai do cache ou do ZIP.
+        if (estado.canceladas[id]) continue;
+        const chave = estado.chaves[id] ?? (await sessao.chaveCancelada(id));
+        if (chave) canceladas.push({ id, chave });
+      } else if (!estado.vistos[id]) {
+        const xml = await sessao.xml(id);
+        if (xml) novas.push({ id, xml, empresa: empresa.nome, chave: chaveDoXml(xml) });
+      }
     }
   }
   // esquece IDs vistos há mais de 120 dias (já saíram da janela)
   const limite = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
-  for (const [id, quando] of Object.entries(estado.vistos)) if (quando < limite) delete estado.vistos[id];
+  for (const [id, quando] of Object.entries(estado.vistos)) {
+    if (quando >= limite) continue;
+    delete estado.vistos[id];
+    delete estado.chaves[id];
+  }
+  for (const [id, quando] of Object.entries(estado.canceladas)) if (quando < limite) delete estado.canceladas[id];
 
-  // quem chama marca como vistas só depois de gravar no Supabase
-  const marcarVistas = (ids) => ids.forEach((id) => (estado.vistos[id] = hoje));
-  return { novas, listadas, marcarVistas };
+  // quem chama marca só depois de gravar no Supabase
+  const marcarVistas = (lista) =>
+    lista.forEach(({ id, chave }) => {
+      estado.vistos[id] = hoje;
+      if (chave) estado.chaves[id] = chave;
+    });
+  const marcarCanceladas = (lista) => lista.forEach(({ id }) => (estado.canceladas[id] = hoje));
+  return { novas, canceladas, listadas, marcarVistas, marcarCanceladas };
 }
