@@ -19,7 +19,7 @@ const CATEGORIA_PRODUTO_ACABADO = "i.Categoria = 'PA - Produto Acabado'";
 
 let poolPromise: Promise<ConnectionPool> | null = null;
 
-function getPool(): Promise<ConnectionPool> {
+export function getPool(): Promise<ConnectionPool> {
   if (!poolPromise) {
     poolPromise = new sql.ConnectionPool(config).connect().catch((err) => {
       poolPromise = null;
