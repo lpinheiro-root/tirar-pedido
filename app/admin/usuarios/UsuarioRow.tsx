@@ -17,6 +17,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
     cartao: usuario.acesso_cartao !== false,
     devolucoes: Boolean(usuario.acesso_devolucoes),
     ecommerce: Boolean(usuario.acesso_ecommerce),
+    contasPagar: Boolean(usuario.acesso_contas_pagar),
   };
 
   async function salvarSenha() {
@@ -62,6 +63,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
                   ['cartao', 'Cartão', acesso.cartao],
                   ['devolucoes', 'NF-e Recebidas', acesso.devolucoes],
                   ['ecommerce', 'E-Commerce', acesso.ecommerce],
+                  ['contas_pagar', 'Contas a Pagar', acesso.contasPagar],
                 ] as const
               ).map(([tela, rotulo, marcado]) => (
                 <label key={tela} className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">

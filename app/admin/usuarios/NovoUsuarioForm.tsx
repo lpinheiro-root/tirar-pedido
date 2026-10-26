@@ -58,6 +58,10 @@ export function NovoUsuarioForm() {
             <input type="checkbox" name="acesso_ecommerce" className="h-4 w-4 accent-primary" />
             E-Commerce
           </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+            <input type="checkbox" name="acesso_contas_pagar" className="h-4 w-4 accent-primary" />
+            Contas a Pagar
+          </label>
         </div>
       </div>
       <div className="mt-4">

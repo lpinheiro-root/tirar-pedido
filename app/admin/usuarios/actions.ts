@@ -31,10 +31,11 @@ export async function criarUsuario(
   const acessoCartao = formData.get('acesso_cartao') === 'on';
   const acessoDevolucoes = formData.get('acesso_devolucoes') === 'on';
   const acessoEcommerce = formData.get('acesso_ecommerce') === 'on';
+  const acessoContasPagar = formData.get('acesso_contas_pagar') === 'on';
 
   if (!nome || !email) return { erro: 'Preencha nome e e-mail.' };
-  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce) {
-    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas ou E-Commerce.' };
+  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce && !acessoContasPagar) {
+    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas, E-Commerce ou Contas a Pagar.' };
   }
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
   if (senha !== confirmacao) return { erro: 'A confirmação não confere com a senha.' };
@@ -56,13 +57,14 @@ export async function criarUsuario(
     ativo: true,
     acesso_cartao: acessoCartao,
     acesso_devolucoes: acessoDevolucoes,
-    // a coluna só existe depois do supabase/acesso_ecommerce.sql
-    ...(acessoEcommerce ? { acesso_ecommerce: true } : {}),
+    acesso_ecommerce: acessoEcommerce,
+    // a coluna só existe depois do supabase/acesso_contas_pagar.sql
+    ...(acessoContasPagar ? { acesso_contas_pagar: true } : {}),
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
-    if (erroInsert.message.includes('acesso_ecommerce')) {
-      return { erro: 'Falta rodar o supabase/acesso_ecommerce.sql no Supabase para liberar o E-Commerce.' };
+    if (erroInsert.message.includes('acesso_contas_pagar')) {
+      return { erro: 'Falta rodar o supabase/acesso_contas_pagar.sql no Supabase para liberar o Contas a Pagar.' };
     }
     return { erro: `Falha ao registrar o usuário: ${erroInsert.message}` };
   }
@@ -91,7 +93,7 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
 /** Libera ou retira o acesso a uma tela: Cartão ou NF-e Recebidas (controle de devoluções). */
 export async function alternarAcesso(
   id: string,
-  tela: 'cartao' | 'devolucoes' | 'ecommerce',
+  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar',
   acesso: boolean
 ): Promise<{ erro?: string }> {
   await requireSuperAdmin();

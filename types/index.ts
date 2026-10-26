@@ -50,6 +50,7 @@ export interface Representante {
   acesso_devolucoes?: boolean;
   acesso_cartao?: boolean;
   acesso_ecommerce?: boolean;
+  acesso_contas_pagar?: boolean;
   criado_em: string;
 }
 
