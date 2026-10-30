@@ -6,7 +6,8 @@ import { categoria, type TituloCP } from './dados';
  * financeiro: cada aba tem duas semanas (segunda a sexta), com Embalagem,
  * Matéria-prima e Frete lado a lado (DATA / VALOR) e o Total geral.
  * Sábado e domingo entram na linha da segunda seguinte ("21, 22 e 23/10/2023").
- * Os valores são o saldo em aberto dos títulos de cada dia de vencimento.
+ * Os valores são o valor original dos títulos em aberto de cada dia de
+ * vencimento, os mesmos dos cards de categoria da tela.
  */
 
 const COLUNAS = [
@@ -47,16 +48,16 @@ function rotuloDias(dias: string[]): string {
   return partes.length === 1 ? partes[0] : `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;
 }
 
-type ValoresDoDia = Map<string, number>; // dia de vencimento → saldo em aberto
+type ValoresDoDia = Map<string, number>; // dia de vencimento → valor original
 
-/** saldo em aberto por categoria e dia de vencimento */
+/** valor original dos títulos em aberto por categoria e dia de vencimento */
 function agrupar(titulos: TituloCP[]) {
   const porCat = new Map<string, ValoresDoDia>(COLUNAS.map((c) => [c.cat, new Map()]));
   for (const t of titulos) {
     if (t.saldo <= 0.01) continue;
     const m = porCat.get(categoria(t));
     if (!m) continue; // "outras contas" não entram nesta planilha
-    m.set(t.vencimento, (m.get(t.vencimento) ?? 0) + t.saldo);
+    m.set(t.vencimento, (m.get(t.vencimento) ?? 0) + t.valor);
   }
   return porCat;
 }
