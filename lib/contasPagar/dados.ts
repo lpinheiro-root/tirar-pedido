@@ -68,6 +68,8 @@ export async function buscarTitulos(de: string, ate: string): Promise<TituloCP[]
         COALESCE(ValorRateio, ValorOriginal) AS Valor, ISNULL(ValorPagoCTB, 0) AS Pago, SaldoCTB, Saldo
       FROM dbo.vFinMovimentosCTB
       WHERE Tipo = 'CP' AND Vencimento >= CAST(@de AS date) AND Vencimento < DATEADD(day, 1, CAST(@ate AS date))
+        -- título com desconto de 100% não é conta a pagar: ficaria no valor original com saldo zero
+        AND NOT (ISNULL(Desconto, 0) > 0 AND ISNULL(Desconto, 0) >= ISNULL(ValorOriginal, 0) - 0.01 AND ISNULL(ValorPago, 0) = 0)
       ORDER BY Vencimento, NomeEmpresa, ClienteDesc`);
 
   return (recordset as Record<string, unknown>[]).map((r) => {
