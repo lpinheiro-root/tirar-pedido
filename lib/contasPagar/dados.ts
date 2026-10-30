@@ -39,11 +39,16 @@ export const CATEGORIAS = [
 ] as const;
 export type Categoria = (typeof CATEGORIAS)[number]['id'];
 
-/** Frete é uma conta (FRETES ENTREGAS) dentro de ADMINISTRATIVO; embalagem e matéria-prima são contas-pai. */
+/**
+ * Frete é uma conta (FRETES ENTREGAS) dentro de ADMINISTRATIVO. Embalagem e
+ * matéria-prima são contas-pai (MATRIZ - EMBALAGEM) ou contas de FORNECEDORES
+ * (FORNECEDORES > EMBALAGEM), que o fluxo de caixa do ERP soma no mesmo grupo.
+ */
 export function categoria(t: Pick<TituloCP, 'contaPai' | 'conta'>): Categoria {
   if (/FRETE/i.test(t.conta)) return 'frete';
-  if (/EMBALAGEM/i.test(t.contaPai)) return 'embalagem';
-  if (/PRIMA/i.test(t.contaPai)) return 'materia_prima';
+  const contas = `${t.contaPai} ${t.conta}`;
+  if (/EMBALAGEM/i.test(contas)) return 'embalagem';
+  if (/PRIMA/i.test(contas)) return 'materia_prima';
   return 'outras';
 }
 
