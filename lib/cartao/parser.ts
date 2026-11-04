@@ -53,10 +53,12 @@ const MESES: Record<string, number> = {
   JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12,
 };
 
-const DATA_SRC = String.raw`(\d{2})[/.](\d{2})(?:[/.](\d{2,4}))?|(\d{2})\s(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\b`;
+// Santander Empresas traz a data completa com traço ("27-03-2026"); o traço só vale com o ano
+const DATA_SRC = String.raw`(\d{2})(?:[/.]|-(?=\d{2}-\d{4}))(\d{2})(?:[/.-](\d{2,4}))?|(\d{2})\s(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\b`;
 // Data que inicia um lançamento: seguida de um token com letra (a descrição).
-// "03/10 125,00" (parcela seguida de valor) não inicia lançamento.
-const INICIO_RE = new RegExp(String.raw`(?:^|\s)(?:${DATA_SRC})\s+(?=\S*[A-Za-zÀ-ú])`, 'gi');
+// "03/10 125,00" (parcela seguida de valor) não inicia lançamento, nem a
+// parcela no meio da descrição ("BR1*TECFAG PARC 07/12 SAO PAULO").
+const INICIO_RE = new RegExp(String.raw`(?<!\bPARC(?:ELA)?\.?)(?:^|\s)(?:${DATA_SRC})\s+(?=\S*[A-Za-zÀ-ú])`, 'gi');
 const VALOR_RE =
   /(-|−)?(?:R\$\s?)?(-|−)?(?<![\d.,])(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})(\s?-)?(?![\d%])/g;
 
@@ -178,7 +180,8 @@ function parseSegmento(
   const valor = parseValorBR(ultimo[3]) * (negativo ? -1 : 1);
 
   let descricao = resto.slice(0, valores[0].index).replace(/\b(?:R\$|US\$|USD|BRL)\s*$/i, '');
-  descricao = descricao.replace(/\s+/g, ' ').trim();
+  // Santander fecha a cidade com barra invertida ("SAO PAULO\")
+  descricao = descricao.replace(/\\(?=\s|$)/g, '').replace(/\s+/g, ' ').trim();
   // compra internacional pode vir com descrição só de códigos ("D38163785 18007220081 ... USD"): vale a sigla da moeda
   const temTexto = /[A-Za-zÀ-ú]{2,}/.test(descricao) || /\b(?:USD|EUR|GBP|BRL)\b/.test(resto);
   if (!temTexto || RESUMO_RE.test(descricao)) return null;
