@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireEcommerce } from '@/lib/auth';
 import { lerExtratoPdf } from '@/lib/ecommerce/extratoBanco';
 import { lerPlanilhaRecebimentos } from '@/lib/ecommerce/planilhaRecebimentos';
-import { conciliar } from '@/lib/ecommerce/conciliar';
+import { conciliar, periodoDoMes } from '@/lib/ecommerce/conciliar';
 import { gerarRelatorioConciliacao } from '@/lib/ecommerce/relatorioPdf';
 import { preencherFluxo } from '@/lib/ecommerce/fluxoXlsx';
 import type { ExtratoLido } from '@/lib/ecommerce/tipos';
@@ -44,7 +44,8 @@ export async function POST(request: Request) {
 
     let fluxoPreenchido = null;
     if (fluxo instanceof File && fluxo.size) {
-      const f = await preencherFluxo(await fluxo.arrayBuffer(), resultado.porDia, resultado.inicio, resultado.fim);
+      // só os dias do mês: o que cai no começo do mês seguinte já foi para o último dia útil
+      const f = await preencherFluxo(await fluxo.arrayBuffer(), resultado.porDia, resultado.inicio, periodoDoMes(mes).primeiroSeguinte);
       fluxoPreenchido = {
         nome: fluxo.name.replace(/\.xlsx$/i, '') + ' - CREDITOS ECOMMERCE.xlsx',
         base64: base64(f.arquivo),

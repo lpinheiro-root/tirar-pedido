@@ -125,7 +125,7 @@ export async function gerarRelatorioConciliacao(r: ResultadoConciliacao): Promis
   // ── cabeçalho e resumo ──
   d.texto(`Conciliação E-Commerce — ${nomeMes}`, M, d.y - 16, 17, fb);
   d.texto(
-    `Período: ${br(r.inicio)} a ${br(r.fim)} (o que cai no dia 1º do mês seguinte entra no último dia útil do mês)   ·   Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+    `Período: ${br(r.inicio)} a ${br(r.fim)} (o que cai do dia 1º ao primeiro dia útil do mês seguinte entra no último dia útil do mês)   ·   Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
     M,
     d.y - 30,
     8,
@@ -271,7 +271,7 @@ export async function gerarRelatorioConciliacao(r: ResultadoConciliacao): Promis
   // ── sobras no extrato ──
   d.secao(`No extrato, mas fora da planilha (${r.sobrasExtrato.length})`);
   d.texto(
-    'Créditos do período que vieram de quem paga os marketplaces (mesmo CNPJ/maquininha), mas não estão na planilha. Os do dia 1º costumam ser do mês anterior ou do seguinte.',
+    'Créditos do período que vieram de quem paga os marketplaces (mesmo CNPJ/maquininha), mas não estão na planilha. Os do começo do mês costumam ser do mês anterior ou do seguinte.',
     M,
     d.y - 8,
     7,

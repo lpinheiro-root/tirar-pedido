@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { IconDownload } from '@/components/ui/Icons';
@@ -55,6 +55,15 @@ export function ConciliacaoEcommerce() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [resposta, setResposta] = useState<Resposta | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+
+  /** tira os arquivos escolhidos e o resultado, para refazer do zero */
+  function limpar() {
+    form.current?.reset();
+    setMes(mesAnterior());
+    setErro(null);
+    setResposta(null);
+  }
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -80,7 +89,7 @@ export function ConciliacaoEcommerce() {
   return (
     <div className="space-y-6">
       <Card className="p-6">
-        <form onSubmit={enviar} className="space-y-5">
+        <form ref={form} onSubmit={enviar} className="space-y-5">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
               <label className="mb-1 block text-label text-on-surface-variant">Mês da conciliação</label>
@@ -93,7 +102,7 @@ export function ConciliacaoEcommerce() {
                 className="h-9 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-2 text-body-sm text-on-surface"
               />
               <p className="mt-1 text-label text-on-surface-variant">
-                Vai do dia 1º até o dia 1º do mês seguinte; o que cai no dia 1º seguinte entra no último dia útil do mês.
+                Vai do dia 1º até o primeiro dia útil do mês seguinte; o que cai nesses dias do mês seguinte entra no último dia útil do mês.
               </p>
             </div>
             <div>
@@ -112,6 +121,9 @@ export function ConciliacaoEcommerce() {
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={enviando}>
               {enviando ? 'Conciliando…' : 'Conciliar'}
+            </Button>
+            <Button type="button" variant="secondary" disabled={enviando} onClick={limpar}>
+              Limpar tudo
             </Button>
             {erro && <p className="text-body-sm text-error">{erro}</p>}
           </div>
@@ -268,7 +280,7 @@ export function ConciliacaoEcommerce() {
             <Card className="p-4">
               <p className="text-h2 text-on-surface">No extrato, mas fora da planilha ({r.sobrasExtrato.length})</p>
               <p className="text-label text-on-surface-variant">
-                Créditos de quem paga os marketplaces que não estão na planilha. Os do dia 1º costumam ser do mês anterior ou do seguinte.
+                Créditos de quem paga os marketplaces que não estão na planilha. Os do começo do mês costumam ser do mês anterior ou do seguinte.
               </p>
               <ul className="mt-2 divide-y divide-border-muted text-body-sm">
                 {r.sobrasExtrato.map((s) => (

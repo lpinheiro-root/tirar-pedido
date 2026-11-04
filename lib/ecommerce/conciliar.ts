@@ -7,8 +7,9 @@ import { juntarLancamentos } from './extratoBanco';
  * - Casa pelo valor exato (centavo) e pela data mais próxima: com a data do
  *   marketplace, o crédito tem que cair entre 3 dias antes e 10 dias depois;
  *   sem data, vale qualquer crédito do período (com folga de 3 dias).
- * - Período do mês: do dia 1º até o dia 1º do mês seguinte. O que cai no banco
- *   no dia 1º do mês seguinte entra no último dia útil do mês.
+ * - Período do mês: do dia 1º até o primeiro dia útil do mês seguinte. O que
+ *   cai no banco do dia 1º até esse primeiro dia útil (ex.: 01 a 03/11/2026,
+ *   com domingo e o feriado de Finados) entra no último dia útil do mês.
  * - Cada crédito do banco só pode ser usado uma vez.
  */
 
@@ -17,14 +18,36 @@ const dias = (a: string, b: string) => (Date.parse(a) - Date.parse(b)) / DIA;
 const somarDias = (d: string, n: number) => new Date(Date.parse(d) + n * DIA).toISOString().slice(0, 10);
 const centavos = (v: number) => Math.round(v * 100);
 
+/** domingo de Páscoa (algoritmo de Meeus/Jones/Butcher) */
+function pascoa(ano: number) {
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+/** feriados nacionais em que o banco não credita (inclui Carnaval e Corpus Christi) */
+function feriados(ano: number): Set<string> {
+  const p = pascoa(ano);
+  const fixos = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'].map((d) => `${ano}-${d}`);
+  return new Set([...fixos, ...[-48, -47, -2, 60].map((n) => somarDias(p, n))]);
+}
+
+const diaUtil = (d: string) => ![0, 6].includes(new Date(d).getUTCDay()) && !feriados(Number(d.slice(0, 4))).has(d);
+
 export function periodoDoMes(mes: string) {
   const [a, m] = mes.split('-').map(Number);
   const inicio = `${mes}-01`;
-  const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10); // dia 1º do mês seguinte
-  // último dia útil (segunda a sexta) do mês
-  let ultimoUtil = somarDias(fim, -1);
-  while ([0, 6].includes(new Date(ultimoUtil).getUTCDay())) ultimoUtil = somarDias(ultimoUtil, -1);
-  return { inicio, fim, ultimoUtil };
+  const primeiroSeguinte = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+  // primeiro dia útil do mês seguinte (incluído no período)
+  let fim = primeiroSeguinte;
+  while (!diaUtil(fim)) fim = somarDias(fim, 1);
+  // último dia útil do mês
+  let ultimoUtil = somarDias(primeiroSeguinte, -1);
+  while (!diaUtil(ultimoUtil)) ultimoUtil = somarDias(ultimoUtil, -1);
+  return { inicio, fim, primeiroSeguinte, ultimoUtil };
 }
 
 /** marca que identifica quem pagou: CPF/CNPJ ou o nome da maquininha ("AMAZON-VISA" → "AMAZON") */
@@ -35,7 +58,7 @@ function origem(l: LancamentoBanco): string | null {
 }
 
 export function conciliar(mes: string, extratos: ExtratoLido[], planilha: PlanilhaLida): ResultadoConciliacao {
-  const { inicio, fim, ultimoUtil } = periodoDoMes(mes);
+  const { inicio, fim, primeiroSeguinte, ultimoUtil } = periodoDoMes(mes);
   const creditos = juntarLancamentos(extratos).filter((l) => l.valor > 0);
   const usados = new Set<number>();
 
@@ -73,8 +96,8 @@ export function conciliar(mes: string, extratos: ExtratoLido[], planilha: Planil
   }
 
   const diaDoFluxo = (data: string) => {
-    if (data === fim) return ultimoUtil;
-    return data >= inicio && data < fim ? data : null;
+    if (data >= primeiroSeguinte && data <= fim) return ultimoUtil;
+    return data >= inicio && data < primeiroSeguinte ? data : null;
   };
 
   const conciliados: Conciliado[] = planilha.itens.map((item) => {

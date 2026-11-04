@@ -43,7 +43,7 @@ export interface PlanilhaLida {
 export interface Conciliado {
   item: ItemPlanilha;
   banco: LancamentoBanco | null;
-  /** dia em que entra no fluxo (data do banco; o dia 1º do mês seguinte vai para o último dia útil) */
+  /** dia em que entra no fluxo (data do banco; do dia 1º ao primeiro dia útil do mês seguinte vai para o último dia útil) */
   diaFluxo: string | null;
   sugestoes: { banco: LancamentoBanco; diferenca: number }[];
 }
@@ -51,7 +51,7 @@ export interface Conciliado {
 export interface ResultadoConciliacao {
   mes: string; // AAAA-MM
   inicio: string;
-  fim: string; // dia 1º do mês seguinte (incluído)
+  fim: string; // primeiro dia útil do mês seguinte (incluído)
   extratos: { arquivo: string; banco: string; empresa: string; conta: string; periodo: string; lancamentos: number }[];
   planilha: { arquivo: string; totalConsolidado: number | null; avisos: string[] };
   conciliados: Conciliado[];
