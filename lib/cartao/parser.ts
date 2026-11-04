@@ -175,7 +175,13 @@ function parseSegmento(
   // antes o valor em moeda estrangeira).
   const valores = Array.from(resto.matchAll(VALOR_RE));
   if (valores.length === 0) return null;
-  const ultimo = valores[valores.length - 1];
+  let ultimo = valores[valores.length - 1];
+  // Santander internacional: "550,00 BRL 109,97 589,70 5,36" (origem, sigla, US$, R$, cotação): vale o R$
+  const sigla = resto.match(/\s(?:USD|EUR|GBP|BRL)\s/);
+  if (sigla) {
+    const depois = valores.filter((v) => v.index! > sigla.index!);
+    if (depois.length === 3) ultimo = depois[1];
+  }
   const negativo = Boolean(ultimo[1] || ultimo[2] || ultimo[4]);
   const valor = parseValorBR(ultimo[3]) * (negativo ? -1 : 1);
 
