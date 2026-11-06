@@ -130,9 +130,22 @@ export function TabelaEmitidas({ notas, empresas }: { notas: NotaEmitida[]; empr
                     onClick={() => alternar(n.id)}
                     title={abertas[n.id] ? 'Fechar a nota de origem' : 'Ver a nota de origem'}
                     aria-expanded={Boolean(abertas[n.id])}
-                    className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-sm text-primary hover:bg-primary/10"
+                    className="mr-2 inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 align-middle text-primary transition hover:bg-primary/20"
                   >
-                    {abertas[n.id] ? '▾' : '▸'}
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="18"
+                      height="18"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`transition-transform ${abertas[n.id] ? 'rotate-90' : ''}`}
+                      aria-hidden="true"
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
                   </button>
                 )}
                 {n.numero}
