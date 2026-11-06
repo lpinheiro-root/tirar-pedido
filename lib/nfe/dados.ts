@@ -22,12 +22,17 @@ export const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'naolancadas', rotulo: 'Não lançadas' },
 ];
 
-export const MAX_DIAS = 93;
+/** Linhas mostradas na tela. */
 export const LIMITE_TELA = 500;
+/** Máximo trazido do ERP numa consulta da tela e no Excel. */
+export const LIMITE_CONSULTA = 2000;
+export const LIMITE_EXCEL = 20000;
+/** Sem busca e sem datas: as notas mais recentes. */
+export const RECENTES = 200;
 
 export interface Filtros {
-  de: string;
-  ate: string;
+  de: string; // '' = sem data inicial
+  ate: string; // '' = sem data final
   empresa: string; // '' = todas
   busca: string; // número, nome, CNPJ ou chave
   situacao: '' | 'autorizada' | 'cancelada' | 'pendente'; // emitidas
@@ -83,14 +88,13 @@ export interface NotaNaoLancada {
   chave: string;
 }
 
-const hojeSP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const um = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
+/** Datas são opcionais: a pessoa digita o que procura e a busca vale para todo o histórico. */
 export function lerFiltros(sp: Record<string, string | string[] | undefined>): Filtros {
-  const hoje = hojeSP();
-  const de = DATA.test(um(sp.de)) ? um(sp.de) : `${hoje.slice(0, 7)}-01`;
-  const ate = DATA.test(um(sp.ate)) ? um(sp.ate) : hoje;
+  const de = DATA.test(um(sp.de)) ? um(sp.de) : '';
+  const ate = DATA.test(um(sp.ate)) ? um(sp.ate) : '';
   const situacao = um(sp.situacao);
   const tipo = um(sp.tipo);
   const cp = um(sp.cp);
@@ -112,28 +116,71 @@ export function filtrosParaUrl(f: Filtros, extra: Record<string, string> = {}): 
   return s ? `?${s}` : '';
 }
 
-export function diasNoPeriodo(f: Pick<Filtros, 'de' | 'ate'>): number {
-  return Math.round((Date.parse(f.ate) - Date.parse(f.de)) / 86_400_000) + 1;
-}
+export const periodoInvertido = (f: Pick<Filtros, 'de' | 'ate'>) => Boolean(f.de && f.ate && f.de > f.ate);
+/** Sem busca e sem datas a tela mostra só as notas mais recentes. */
+export const semFiltro = (f: Filtros) => !f.busca && !f.de && !f.ate;
 
 /** Só dígitos; chave de NF-e tem 44. */
 export function limparChave(s: string): string {
   return s.replace(/\D/g, '');
 }
 
-const semAcento = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
-
-/** Busca livre por número, nome, CNPJ/CPF ou chave (feita aqui, depois da consulta do período). */
-function bate(busca: string, ...campos: string[]): boolean {
-  if (!busca) return true;
-  const termo = semAcento(busca);
-  const digitos = limparChave(busca);
-  return campos.some((c) => semAcento(c).includes(termo) || (digitos.length >= 3 && limparChave(c).includes(digitos)));
+interface Colunas {
+  data: string;
+  empresa: string;
+  numero: string;
+  chave: string;
+  nome: string;
+  documento: string;
 }
+
+/**
+ * Condições do WHERE para período, empresa e busca, feitas no banco para valer em todo o
+ * histórico. A busca entende o que foi digitado: 44 números = chave; 11 ou 14 = CPF/CNPJ;
+ * 8 = raiz do CNPJ ou número da nota; outros números = número da nota; texto = nome.
+ */
+function condicoes(req: sql.Request, f: Filtros, c: Colunas): string[] {
+  const w: string[] = [];
+  if (f.de) {
+    req.input('de', sql.VarChar(10), f.de);
+    w.push(`${c.data} >= CAST(@de AS date)`);
+  }
+  if (f.ate) {
+    req.input('ate', sql.VarChar(10), f.ate);
+    w.push(`${c.data} < DATEADD(day, 1, CAST(@ate AS date))`);
+  }
+  if (f.empresa) {
+    req.input('empresa', sql.VarChar(10), f.empresa);
+    w.push(`RTRIM(${c.empresa}) = @empresa`);
+  }
+  const b = f.busca;
+  if (!b) return w;
+  const digitos = limparChave(b);
+  const docLimpo = `REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(${c.documento}, ''), '.', ''), '/', ''), '-', ''), ' ', '')`;
+  const numero = `TRY_CAST(${c.numero} AS bigint) = @num`;
+  if (/^[\d.\-/\s]+$/.test(b) && digitos) {
+    if (digitos.length === 44) {
+      req.input('chave', sql.VarChar(44), digitos);
+      w.push(`${c.chave} = @chave`);
+    } else if (digitos.length === 11 || digitos.length === 14) {
+      req.input('doc', sql.VarChar(14), digitos);
+      w.push(`${docLimpo} = @doc`);
+    } else if (digitos.length === 8) {
+      req.input('raiz', sql.VarChar(9), `${digitos}%`).input('num', sql.BigInt, Number(digitos));
+      w.push(`(${docLimpo} LIKE @raiz OR ${numero})`);
+    } else {
+      req.input('num', sql.BigInt, Number(digitos.slice(0, 15)));
+      w.push(numero);
+    }
+  } else {
+    req.input('nome', sql.VarChar(90), `%${b}%`);
+    w.push(`${c.nome} LIKE @nome`);
+  }
+  return w;
+}
+
+/** Quantas linhas trazer: só as recentes sem nenhum filtro; senão até o limite pedido. */
+const topo = (f: Filtros, limite: number) => (semFiltro(f) ? RECENTES : limite);
 
 let cacheEmpresas: { quando: number; nomes: Map<string, string> } | null = null;
 
@@ -159,18 +206,24 @@ export async function nomesEmpresas(): Promise<Map<string, string>> {
   return nomes;
 }
 
-export async function buscarEmitidas(f: Filtros): Promise<NotaEmitida[]> {
+export async function buscarEmitidas(f: Filtros, limite = LIMITE_CONSULTA): Promise<NotaEmitida[]> {
   const pool = await getPool();
-  const req = pool.request().input('de', sql.VarChar(10), f.de).input('ate', sql.VarChar(10), f.ate);
-  const extras: string[] = [];
-  if (f.empresa) {
-    req.input('empresa', sql.VarChar(10), f.empresa);
-    extras.push('AND RTRIM(c.EmpresaID) = @empresa');
-  }
-  if (f.tipo === 'saida') extras.push("AND c.Saida = 'X'");
-  if (f.tipo === 'entrada') extras.push("AND c.Entrada = 'X'");
+  const req = pool.request().input('limite', sql.Int, topo(f, limite));
+  const w = condicoes(req, f, {
+    data: 'c.Emissao',
+    empresa: 'c.EmpresaID',
+    numero: 'c.Numero',
+    chave: 'c.ChaveNFE',
+    nome: 'c.RazSoc',
+    documento: 'c.CNPJ',
+  });
+  if (f.tipo === 'saida') w.push("c.Saida = 'X'");
+  if (f.tipo === 'entrada') w.push("c.Entrada = 'X'");
+  if (f.situacao === 'cancelada') w.push('c.Cancelada = 1');
+  if (f.situacao === 'autorizada') w.push("c.Cancelada = 0 AND ISNULL(c.ProtocoloNFE, '') <> ''");
+  if (f.situacao === 'pendente') w.push("c.Cancelada = 0 AND ISNULL(c.ProtocoloNFE, '') = ''");
   const { recordset } = await req.query(`
-    SELECT
+    SELECT TOP (@limite)
       c.fscNFID AS id, RTRIM(c.Numero) AS numero, RTRIM(ISNULL(c.Serie, '')) AS serie,
       CONVERT(varchar(10), c.Emissao, 23) AS emissao, RTRIM(c.EmpresaID) AS empresaId,
       CASE WHEN c.Entrada = 'X' THEN 'entrada' ELSE 'saida' END AS tipo,
@@ -181,30 +234,32 @@ export async function buscarEmitidas(f: Filtros): Promise<NotaEmitida[]> {
       CONVERT(varchar(16), c.DataAutorizacaoNFE, 120) AS autorizacao, c.Cancelada AS cancelada
     FROM dbo.fscNFCapa c
     LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
-    WHERE c.Emissao >= CAST(@de AS date) AND c.Emissao < DATEADD(day, 1, CAST(@ate AS date))
-      ${extras.join(' ')}
+    ${w.length ? `WHERE ${w.join(' AND ')}` : ''}
     ORDER BY c.Emissao DESC, c.fscNFID DESC`);
 
-  return recordset
-    .map(
-      (r): NotaEmitida => ({
-        ...r,
-        situacao: r.cancelada ? 'cancelada' : r.protocolo ? 'autorizada' : 'pendente',
-      })
-    )
-    .filter((n) => (!f.situacao || n.situacao === f.situacao) && bate(f.busca, n.numero, n.destinatario, n.documento, n.chave));
+  return recordset.map(
+    (r): NotaEmitida => ({
+      ...r,
+      situacao: r.cancelada ? 'cancelada' : r.protocolo ? 'autorizada' : 'pendente',
+    })
+  );
 }
 
-export async function buscarEntradas(f: Filtros): Promise<NotaEntrada[]> {
+export async function buscarEntradas(f: Filtros, limite = LIMITE_CONSULTA): Promise<NotaEntrada[]> {
   const pool = await getPool();
-  const req = pool.request().input('de', sql.VarChar(10), f.de).input('ate', sql.VarChar(10), f.ate);
-  const extras: string[] = [];
-  if (f.empresa) {
-    req.input('empresa', sql.VarChar(10), f.empresa);
-    extras.push('AND RTRIM(n.EmpresaID) = @empresa');
-  }
+  const req = pool.request().input('limite', sql.Int, topo(f, limite));
+  const w = condicoes(req, f, {
+    data: 'n.DataCadastro',
+    empresa: 'n.EmpresaID',
+    numero: 'n.nota_fornecedor',
+    chave: 'n.ChaveNFE',
+    nome: 'COALESCE(NULLIF(n.ContRazSocForn, \'\'), c.ContRazSoc)',
+    documento: 'n.ContCGCForn',
+  });
+  if (f.cp === 'sim') w.push('ISNULL(n.GeradoCP, 0) = 1');
+  if (f.cp === 'nao') w.push('ISNULL(n.GeradoCP, 0) = 0');
   const { recordset } = await req.query(`
-    SELECT
+    SELECT TOP (@limite)
       n.nota AS id, CAST(n.nota_fornecedor AS varchar(20)) AS numero, RTRIM(ISNULL(n.serie_fornecedor, '')) AS serie,
       CONVERT(varchar(10), n.data, 23) AS emissao, CONVERT(varchar(10), n.DataCadastro, 23) AS lancamento,
       RTRIM(ISNULL(n.EmpresaID, '')) AS empresaId,
@@ -217,39 +272,37 @@ export async function buscarEntradas(f: Filtros): Promise<NotaEntrada[]> {
     FROM dbo.Nota_entrada n
     LEFT JOIN dbo.Contas c ON c.ContaID = n.fornecedor
     LEFT JOIN dbo.CmpOP o ON o.CmpOpID = n.CmpOpID
-    WHERE n.status <> 'CA'
-      AND n.DataCadastro >= CAST(@de AS date) AND n.DataCadastro < DATEADD(day, 1, CAST(@ate AS date))
-      ${extras.join(' ')}
+    WHERE n.status <> 'CA' ${w.map((c) => `AND ${c}`).join(' ')}
     ORDER BY n.DataCadastro DESC, n.nota DESC`);
 
-  return (recordset as NotaEntrada[]).filter(
-    (n) =>
-      (!f.cp || (f.cp === 'sim' ? n.geradoCp : !n.geradoCp)) && bate(f.busca, n.numero, n.fornecedor, n.cnpj, n.chave, n.operacao)
-  );
+  return recordset as NotaEntrada[];
 }
 
-export async function buscarNaoLancadas(f: Filtros): Promise<NotaNaoLancada[]> {
+export async function buscarNaoLancadas(f: Filtros, limite = LIMITE_CONSULTA): Promise<NotaNaoLancada[]> {
   const pool = await getPool();
-  const req = pool.request().input('de', sql.VarChar(10), f.de).input('ate', sql.VarChar(10), f.ate);
-  const extras: string[] = [];
-  if (f.empresa) {
-    req.input('empresa', sql.VarChar(10), f.empresa);
-    extras.push('AND RTRIM(r.EmpresaID) = @empresa');
-  }
+  // Poucas notas: aqui sem filtro vale o limite normal, não só as recentes.
+  const req = pool.request().input('limite', sql.Int, limite);
+  const w = condicoes(req, f, {
+    data: 'r.Data',
+    empresa: 'r.EmpresaID',
+    numero: 'r.Nota',
+    chave: 'r.ChaveNota',
+    nome: 'r.RazSocForn',
+    documento: 'r.FornecedorCNPJ',
+  });
   const { recordset } = await req.query(`
-    SELECT
+    SELECT TOP (@limite)
       r.recNFeID AS id, RTRIM(ISNULL(r.Nota, '')) AS numero, RTRIM(ISNULL(r.Serie, '')) AS serie,
       CONVERT(varchar(10), r.Data, 23) AS emissao, CONVERT(varchar(16), r.DataProcessamento, 120) AS recebimento,
       RTRIM(ISNULL(r.EmpresaID, '')) AS empresaId, RTRIM(ISNULL(r.RazSocForn, '')) AS fornecedor,
       RTRIM(ISNULL(r.FornecedorCNPJ, '')) AS cnpj, CAST(ISNULL(r.TotalNota, 0) AS float) AS valor,
       RTRIM(ISNULL(r.Status, '')) AS status, RTRIM(ISNULL(r.ChaveNota, '')) AS chave
     FROM dbo.recNFe r
-    WHERE r.Data >= CAST(@de AS date) AND r.Data < DATEADD(day, 1, CAST(@ate AS date))
-      AND ISNULL(r.ChaveNota, '') <> ''
+    WHERE ISNULL(r.ChaveNota, '') <> ''
       AND NOT EXISTS (SELECT 1 FROM dbo.Nota_entrada ne WHERE ne.ChaveNFE = r.ChaveNota AND ne.status <> 'CA')
-      ${extras.join(' ')}
+      ${w.map((c) => `AND ${c}`).join(' ')}
     ORDER BY r.Data DESC`);
-  return (recordset as NotaNaoLancada[]).filter((n) => bate(f.busca, n.numero, n.fornecedor, n.cnpj, n.chave));
+  return recordset as NotaNaoLancada[];
 }
 
 export interface ResultadoChave {

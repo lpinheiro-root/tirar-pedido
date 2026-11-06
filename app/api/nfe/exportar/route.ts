@@ -1,13 +1,13 @@
 import ExcelJS from 'exceljs';
 import { requireNfe } from '@/lib/auth';
 import {
-  MAX_DIAS,
+  LIMITE_EXCEL,
   buscarEmitidas,
   buscarEntradas,
   buscarNaoLancadas,
-  diasNoPeriodo,
   lerFiltros,
   nomesEmpresas,
+  periodoInvertido,
 } from '@/lib/nfe/dados';
 
 export const dynamic = 'force-dynamic';
@@ -16,12 +16,15 @@ const MOEDA = '"R$" #,##0.00';
 const SITUACAO = { autorizada: 'Autorizada', cancelada: 'Cancelada', pendente: 'Sem autorização' } as const;
 const data = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null);
 
-/** Excel da lista da aba NFE (?aba=emitidas|entradas|naolancadas), com os filtros da tela e todas as linhas. */
+/**
+ * Excel da lista da aba NFE (?aba=emitidas|entradas|naolancadas), com a busca e os filtros da
+ * tela (sem eles, as notas mais recentes), até LIMITE_EXCEL linhas.
+ */
 export async function GET(request: Request) {
   await requireNfe();
   const url = new URL(request.url);
   const f = lerFiltros(Object.fromEntries(url.searchParams));
-  if (diasNoPeriodo(f) < 1 || diasNoPeriodo(f) > MAX_DIAS) return new Response(`Escolha um período de até ${MAX_DIAS} dias.`, { status: 400 });
+  if (periodoInvertido(f)) return new Response('A data final é antes da inicial.', { status: 400 });
   const aba = url.searchParams.get('aba');
   const empresas = await nomesEmpresas();
   const empresa = (id: string) => empresas.get(id) ?? id;
@@ -44,7 +47,7 @@ export async function GET(request: Request) {
       { header: 'Gerou conta a pagar', key: 'cp', width: 12 },
       { header: 'Chave', key: 'chave', width: 48 },
     ];
-    for (const n of await buscarEntradas(f)) {
+    for (const n of await buscarEntradas(f, LIMITE_EXCEL)) {
       ws.addRow({ ...n, lancamento: data(n.lancamento), emissao: data(n.emissao), empresa: empresa(n.empresaId), cp: n.geradoCp ? 'Sim' : n.geraCp ? 'Ainda não' : 'Não gera' });
     }
   } else if (aba === 'naolancadas') {
@@ -61,7 +64,7 @@ export async function GET(request: Request) {
       { header: 'Status no ERP', key: 'status', width: 14 },
       { header: 'Chave', key: 'chave', width: 48 },
     ];
-    for (const n of await buscarNaoLancadas(f)) ws.addRow({ ...n, emissao: data(n.emissao), empresa: empresa(n.empresaId) });
+    for (const n of await buscarNaoLancadas(f, LIMITE_EXCEL)) ws.addRow({ ...n, emissao: data(n.emissao), empresa: empresa(n.empresaId) });
   } else {
     nome = 'Emitidas';
     const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -80,7 +83,7 @@ export async function GET(request: Request) {
       { header: 'Protocolo', key: 'protocolo', width: 18 },
       { header: 'Chave', key: 'chave', width: 48 },
     ];
-    for (const n of await buscarEmitidas(f)) {
+    for (const n of await buscarEmitidas(f, LIMITE_EXCEL)) {
       ws.addRow({ ...n, emissao: data(n.emissao), empresa: empresa(n.empresaId), tipoTexto: n.tipo === 'saida' ? 'Saída' : 'Entrada', situacaoTexto: SITUACAO[n.situacao] });
     }
   }
@@ -93,7 +96,7 @@ export async function GET(request: Request) {
   return new Response(buffer as ArrayBuffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="NFE ${nome} ${f.de} a ${f.ate}.xlsx"`,
+      'Content-Disposition': `attachment; filename="NFE ${nome}${f.de || f.ate ? ` ${f.de || 'inicio'} a ${f.ate || 'hoje'}` : ''}.xlsx"`,
       'Cache-Control': 'no-store',
     },
   });

@@ -6,14 +6,16 @@ import { IconDownload } from '@/components/ui/Icons';
 import { formatCurrency } from '@/lib/format';
 import {
   ABAS,
+  LIMITE_CONSULTA,
   LIMITE_TELA,
-  MAX_DIAS,
+  RECENTES,
   buscarEmitidas,
   buscarEntradas,
   buscarNaoLancadas,
   buscarPorChave,
-  diasNoPeriodo,
   filtrosParaUrl,
+  periodoInvertido,
+  semFiltro,
   lerFiltros,
   limparChave,
   nomesEmpresas,
@@ -84,12 +86,29 @@ export default async function NfePage({ searchParams }: { searchParams: Record<s
   );
 }
 
+/** O que a lista está mostrando, para os cards. */
+function descricao(f: Filtros): string {
+  if (semFiltro(f)) return `as ${RECENTES} mais recentes`;
+  const periodo = f.de && f.ate ? `${br(f.de)} a ${br(f.ate)}` : f.de ? `desde ${br(f.de)}` : f.ate ? `até ${br(f.ate)}` : 'todas as datas';
+  return f.busca ? `“${f.busca}” · ${periodo}` : periodo;
+}
+
 function Filtro({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<string, string> }) {
-  const rotuloData = aba === 'entradas' ? 'Lançamento de' : 'Emissão de';
+  const rotuloData = aba === 'entradas' ? 'Lançamento de (opcional)' : 'Emissão de (opcional)';
   return (
     <Card className="mb-4 p-4">
       <form className="flex flex-wrap items-end gap-3" method="get">
         <input type="hidden" name="aba" value={aba} />
+        <div className="min-w-72 flex-[2]">
+          <label className="mb-1 block text-label text-on-surface-variant">Buscar em todas as datas</label>
+          <input
+            name="busca"
+            defaultValue={f.busca}
+            autoFocus
+            placeholder={aba === 'emitidas' ? 'Nº da nota, destinatário, CNPJ ou chave' : 'Nº da nota, fornecedor, CNPJ ou chave'}
+            className={`${campo} w-full`}
+          />
+        </div>
         <div>
           <label className="mb-1 block text-label text-on-surface-variant">{rotuloData}</label>
           <input type="date" name="de" defaultValue={f.de} className={campo} />
@@ -142,21 +161,17 @@ function Filtro({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<stri
             </select>
           </div>
         )}
-        <div className="min-w-56 flex-1">
-          <label className="mb-1 block text-label text-on-surface-variant">Buscar</label>
-          <input
-            name="busca"
-            defaultValue={f.busca}
-            placeholder={aba === 'emitidas' ? 'Nº, destinatário, CNPJ ou chave' : 'Nº, fornecedor, CNPJ ou chave'}
-            className={`${campo} w-full`}
-          />
-        </div>
         <button
           type="submit"
           className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-body-sm font-medium text-on-primary hover:bg-primary/90"
         >
           Consultar
         </button>
+        {(f.busca || f.de || f.ate || f.empresa) && (
+          <Link href={filtrosParaUrl({ ...f, de: '', ate: '', busca: '', empresa: '' }, { aba })} className="inline-flex h-9 items-center px-2 text-body-sm text-on-surface-variant hover:text-on-surface">
+            Limpar
+          </Link>
+        )}
         <a
           href={`/api/nfe/exportar${filtrosParaUrl(f, { aba })}`}
           className="ml-auto inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
@@ -203,11 +218,19 @@ const Vazio = ({ cols, texto }: { cols: number; texto: string }) => (
   </tr>
 );
 
-function Aviso({ total }: { total: number }) {
+function Aviso({ total, f }: { total: number; f: Filtros }) {
+  if (semFiltro(f) && total >= RECENTES) {
+    return (
+      <p className="border-t border-border-muted px-4 py-3 text-body-sm text-on-surface-variant">
+        Estas são as {RECENTES} notas mais recentes. Digite o número, o nome, o CNPJ ou a chave no Buscar para achar qualquer nota, de qualquer data.
+      </p>
+    );
+  }
   if (total <= LIMITE_TELA) return null;
   return (
     <p className="border-t border-border-muted px-4 py-3 text-body-sm text-on-surface-variant">
-      Mostrando as {LIMITE_TELA} mais recentes de {total}. Use os filtros ou o Exportar Excel para ver todas.
+      Mostrando as {LIMITE_TELA} mais recentes de {total >= LIMITE_CONSULTA ? `mais de ${LIMITE_CONSULTA}` : total}. Refine a busca ou
+      use o Exportar Excel.
     </p>
   );
 }
@@ -215,8 +238,7 @@ function Aviso({ total }: { total: number }) {
 async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<string, string> }) {
   const empresa = (id: string) => empresas.get(id) ?? id;
   let erro: string | null = null;
-  if (diasNoPeriodo(f) < 1) erro = 'A data final é antes da inicial.';
-  else if (diasNoPeriodo(f) > MAX_DIAS) erro = `Escolha um período de até ${MAX_DIAS} dias.`;
+  if (periodoInvertido(f)) erro = 'A data final é antes da inicial.';
 
   let emitidas: NotaEmitida[] = [];
   let entradas: NotaEntrada[] = [];
@@ -245,7 +267,7 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
         <>
           <Kpis
             itens={[
-              { t: 'Notas', v: String(emitidas.length), d: `${br(f.de)} a ${br(f.ate)}` },
+              { t: 'Notas', v: String(emitidas.length), d: descricao(f) },
               {
                 t: 'Valor autorizado',
                 v: formatCurrency(emitidas.filter((n) => n.situacao === 'autorizada').reduce((s, n) => s + n.valor, 0)),
@@ -296,18 +318,18 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
                       <td className={td}>{n.chave && n.situacao !== 'pendente' && <Baixar chave={n.chave} />}</td>
                     </tr>
                   ))}
-                  {emitidas.length === 0 && <Vazio cols={8} texto="Nenhuma nota emitida nesse período com esses filtros." />}
+                  {emitidas.length === 0 && <Vazio cols={8} texto="Nenhuma nota emitida encontrada com essa busca." />}
                 </tbody>
               </table>
             </div>
-            <Aviso total={emitidas.length} />
+            <Aviso total={emitidas.length} f={f} />
           </Card>
         </>
       ) : aba === 'entradas' ? (
         <>
           <Kpis
             itens={[
-              { t: 'Notas lançadas', v: String(entradas.length), d: `${br(f.de)} a ${br(f.ate)}` },
+              { t: 'Notas lançadas', v: String(entradas.length), d: descricao(f) },
               { t: 'Valor', v: formatCurrency(entradas.reduce((s, n) => s + n.valor, 0)) },
               {
                 t: 'Sem conta a pagar',
@@ -363,11 +385,11 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
                       <td className={td}>{comXml.has(n.chave) && <Baixar chave={n.chave} />}</td>
                     </tr>
                   ))}
-                  {entradas.length === 0 && <Vazio cols={8} texto="Nenhuma nota de entrada lançada nesse período com esses filtros." />}
+                  {entradas.length === 0 && <Vazio cols={8} texto="Nenhuma nota de entrada encontrada com essa busca." />}
                 </tbody>
               </table>
             </div>
-            <Aviso total={entradas.length} />
+            <Aviso total={entradas.length} f={f} />
           </Card>
         </>
       ) : (
@@ -417,11 +439,11 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
                       <td className={td}>{comXml.has(n.chave) && <Baixar chave={n.chave} />}</td>
                     </tr>
                   ))}
-                  {naoLancadas.length === 0 && <Vazio cols={7} texto="Nenhuma nota recebida sem lançamento nesse período." />}
+                  {naoLancadas.length === 0 && <Vazio cols={7} texto="Nenhuma nota recebida sem lançamento com esses filtros." />}
                 </tbody>
               </table>
             </div>
-            <Aviso total={naoLancadas.length} />
+            <Aviso total={naoLancadas.length} f={f} />
           </Card>
         </>
       )}
