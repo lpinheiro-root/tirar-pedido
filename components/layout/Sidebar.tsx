@@ -16,12 +16,15 @@ export function Sidebar({
   subtitulo,
   footer,
   titulo = 'Natuhair Pedidos',
+  logo,
 }: {
   links: SidebarLink[];
   nome: string;
   subtitulo: string;
   footer?: React.ReactNode;
   titulo?: string;
+  /** Imagem no lugar do ícone padrão (ex.: /natuhair-logo.jpg). */
+  logo?: string;
 }) {
   const pathname = usePathname();
 
@@ -29,17 +32,25 @@ export function Sidebar({
     <aside className="flex h-screen w-64 print:hidden shrink-0 flex-col justify-between border-r border-border-muted bg-surface-container-lowest">
       <div>
         <div className="flex items-center gap-2 px-6 py-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-on-primary">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M4 6h16M4 12h16M4 18h10"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-          <span className="text-h2 text-primary">{titulo}</span>
+          {logo ? (
+            // A imagem tem margem branca: o recorte redondo + zoom deixa só o círculo azul.
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logo} alt="" className="h-full w-full scale-[1.12] object-cover" />
+            </div>
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-on-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 6h16M4 12h16M4 18h10"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+          )}
+          <span className={logo ? 'text-h2 font-bold text-primary' : 'text-h2 text-primary'}>{titulo}</span>
         </div>
 
         <nav className="flex flex-col gap-1 px-3">

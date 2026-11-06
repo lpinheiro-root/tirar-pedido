@@ -26,7 +26,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-screen bg-surface">
       <Sidebar
         links={links}
-        titulo="Natuhair Finanças"
+        titulo="Natuhair"
+        logo="/natuhair-logo.jpg"
         nome={representante.nome}
         subtitulo={representante.super_admin ? 'Administrador' : 'Usuário'}
         footer={<SidebarFooter contaHref="/admin/conta" />}
