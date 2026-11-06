@@ -56,7 +56,11 @@ export interface NotaEmitida {
   protocolo: string;
   autorizacao: string | null;
   situacao: 'autorizada' | 'cancelada' | 'pendente';
+  /** Remessa por conta e ordem: a tela mostra a seta para abrir a nota de origem. */
+  contaOrdem?: boolean;
 }
+
+export const ehRemessaContaOrdem = (natureza: string) => /remessa.*conta e ordem/i.test(natureza);
 
 export interface NotaEntrada {
   id: number;
@@ -241,8 +245,64 @@ export async function buscarEmitidas(f: Filtros, limite = LIMITE_CONSULTA): Prom
     (r): NotaEmitida => ({
       ...r,
       situacao: r.cancelada ? 'cancelada' : r.protocolo ? 'autorizada' : 'pendente',
+      contaOrdem: ehRemessaContaOrdem(r.natureza),
     })
   );
+}
+
+export interface OrigemRemessa {
+  /** Como a remessa cita a origem no texto da nota (informações complementares). */
+  referencia: { numero: string; serie: string; data: string; emitente: string } | null;
+  /** A nota de origem achada no ERP (mesmo número e data; se houver mais de uma, a de mesmo valor). */
+  nota: NotaEmitida | null;
+}
+
+const COLUNAS_EMITIDA = `
+  c.fscNFID AS id, RTRIM(c.Numero) AS numero, RTRIM(ISNULL(c.Serie, '')) AS serie,
+  CONVERT(varchar(10), c.Emissao, 23) AS emissao, RTRIM(c.EmpresaID) AS empresaId,
+  CASE WHEN c.Entrada = 'X' THEN 'entrada' ELSE 'saida' END AS tipo,
+  RTRIM(ISNULL(c.NaturezaOp, '')) AS natureza, RTRIM(ISNULL(c.RazSoc, '')) AS destinatario,
+  RTRIM(ISNULL(c.CNPJ, '')) AS documento, RTRIM(ISNULL(c.Estado, '')) AS uf,
+  CAST(ISNULL(t.ValorTotal, 0) AS float) AS valor, RTRIM(ISNULL(c.ChaveNFE, '')) AS chave,
+  RTRIM(ISNULL(c.ProtocoloNFE, '')) AS protocolo, CONVERT(varchar(16), c.DataAutorizacaoNFE, 120) AS autorizacao,
+  c.Cancelada AS cancelada`;
+
+/**
+ * Nota de origem de uma remessa por conta e ordem. O ERP não preenche a nota referenciada
+ * (nem FscNFReferenciadas nem refNFe no XML); a ligação está só no texto da nota:
+ * "REFERENTE A NOTA FISCAL N 37781, SERIE 1, DATA 05/11/2026 EMITIDA POR ROMA ...".
+ * A origem é emitida por outra empresa do grupo e está no mesmo ERP.
+ */
+export async function origemDaRemessa(id: number): Promise<OrigemRemessa> {
+  const pool = await getPool();
+  const { recordset } = await pool.request().input('id', sql.Int, id).query(`
+    SELECT SUBSTRING(x.XmlTransacao, CHARINDEX('<infCpl>', x.XmlTransacao), 800) AS texto, CAST(ISNULL(t.ValorTotal, 0) AS float) AS valor
+    FROM dbo.FscNFeXML x LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = x.fscnfid
+    WHERE x.fscnfid = @id`);
+  const texto = String(recordset[0]?.texto ?? '').toUpperCase();
+  // Dois formatos: "N 37781, ... DATA 05/11/2026 EMITIDA" (atual) e "Nº 37781, ... DATA 05/03/2025 - EMITIDA" (antigo).
+  const m = texto.match(
+    /NOTA FISCAL N(?:º|°|O|\.|&#186;|&#176;)*\s*(\d+)\s*,\s*SERIE\s*([^,]*?)\s*,\s*DATA\s*(\d{2})\/(\d{2})\/(\d{4})\s*-?\s*EMITIDA POR\s*([^-,<]+)/
+  );
+  if (!m) return { referencia: null, nota: null };
+  const referencia = { numero: m[1], serie: m[2], data: `${m[5]}-${m[4]}-${m[3]}`, emitente: m[6].trim() };
+
+  const cand = await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('num', sql.BigInt, Number(referencia.numero))
+    .input('dt', sql.VarChar(10), referencia.data)
+    .query(`
+      SELECT ${COLUNAS_EMITIDA}
+      FROM dbo.fscNFCapa c LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
+      WHERE c.Emissao >= CAST(@dt AS date) AND c.Emissao < DATEADD(day, 1, CAST(@dt AS date))
+        AND TRY_CAST(c.Numero AS bigint) = @num AND c.fscNFID <> @id`);
+  const valor = Number(recordset[0]?.valor ?? 0);
+  const escolhida = cand.recordset.find((r) => Math.abs(r.valor - valor) < 0.01) ?? (cand.recordset.length === 1 ? cand.recordset[0] : null);
+  const nota: NotaEmitida | null = escolhida
+    ? { ...escolhida, situacao: escolhida.cancelada ? 'cancelada' : escolhida.protocolo ? 'autorizada' : 'pendente' }
+    : null;
+  return { referencia, nota };
 }
 
 export async function buscarEntradas(f: Filtros, limite = LIMITE_CONSULTA): Promise<NotaEntrada[]> {

@@ -27,6 +27,7 @@ import {
   type NotaNaoLancada,
 } from '@/lib/nfe/dados';
 import { chavesComXmlNoNfStock } from '@/lib/nfe/xml';
+import { TabelaEmitidas } from './TabelaEmitidas';
 
 export const dynamic = 'force-dynamic';
 
@@ -279,48 +280,7 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
           />
           <Card>
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-surface-container-low text-label uppercase text-on-surface-variant">
-                  <tr>
-                    <th className={th}>Emissão</th>
-                    <th className={th}>Nº / série</th>
-                    <th className={th}>Empresa</th>
-                    <th className={th}>Destinatário</th>
-                    <th className={th}>Natureza</th>
-                    <th className={`${th} text-right`}>Valor</th>
-                    <th className={th}>Situação</th>
-                    <th className={th}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {emitidas.slice(0, LIMITE_TELA).map((n) => (
-                    <tr key={n.id} className="border-t border-border-muted align-top">
-                      <td className={`${td} whitespace-nowrap`}>{br(n.emissao)}</td>
-                      <td className={`${td} whitespace-nowrap font-medium`}>
-                        {n.numero}
-                        {n.serie && <span className="text-on-surface-variant"> / {n.serie}</span>}
-                        {n.tipo === 'entrada' && <span className="ml-1 rounded-sm bg-sky-100 px-1.5 text-label text-sky-800">entrada</span>}
-                      </td>
-                      <td className={`${td} text-on-surface-variant`}>{empresa(n.empresaId)}</td>
-                      <td className={td}>
-                        {n.destinatario}
-                        <div className="text-label text-on-surface-variant">
-                          {n.documento} {n.uf && `· ${n.uf}`}
-                        </div>
-                      </td>
-                      <td className={`${td} text-on-surface-variant`}>{n.natureza}</td>
-                      <td className={`${td} whitespace-nowrap text-right font-medium`}>{formatCurrency(n.valor)}</td>
-                      <td className={td}>
-                        <span className={`whitespace-nowrap rounded-sm px-2 py-0.5 text-label font-medium ${SITUACAO[n.situacao].cor}`}>
-                          {SITUACAO[n.situacao].rotulo}
-                        </span>
-                      </td>
-                      <td className={td}>{n.chave && n.situacao !== 'pendente' && <Baixar chave={n.chave} />}</td>
-                    </tr>
-                  ))}
-                  {emitidas.length === 0 && <Vazio cols={8} texto="Nenhuma nota emitida encontrada com essa busca." />}
-                </tbody>
-              </table>
+              <TabelaEmitidas notas={emitidas.slice(0, LIMITE_TELA)} empresas={Object.fromEntries(empresas)} />
             </div>
             <Aviso total={emitidas.length} f={f} />
           </Card>
