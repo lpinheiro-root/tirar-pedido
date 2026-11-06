@@ -51,6 +51,7 @@ export interface Representante {
   acesso_cartao?: boolean;
   acesso_ecommerce?: boolean;
   acesso_contas_pagar?: boolean;
+  acesso_nfe?: boolean;
   criado_em: string;
 }
 

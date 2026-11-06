@@ -18,6 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ...(acesso.contasPagar
       ? [{ href: '/admin/contas-pagar', label: 'Contas a Pagar', icon: <IconReceipt /> }]
       : []),
+    ...(acesso.nfe ? [{ href: '/admin/nfe', label: 'NFE', icon: <IconDocument /> }] : []),
     ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),
   ];
 

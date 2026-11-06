@@ -57,6 +57,7 @@ export function acessos(r: Representante) {
     devolucoes: Boolean(r.super_admin) || Boolean(r.acesso_devolucoes),
     ecommerce: Boolean(r.super_admin) || Boolean(r.acesso_ecommerce),
     contasPagar: Boolean(r.super_admin) || Boolean(r.acesso_contas_pagar),
+    nfe: Boolean(r.super_admin) || Boolean(r.acesso_nfe),
   };
 }
 
@@ -66,7 +67,8 @@ export function telaInicial(r: Representante) {
   if (a.cartao) return '/admin/cartao';
   if (a.devolucoes) return '/admin/nfe-recebidas';
   if (a.ecommerce) return '/admin/ecommerce';
-  return a.contasPagar ? '/admin/contas-pagar' : '/admin/conta';
+  if (a.contasPagar) return '/admin/contas-pagar';
+  return a.nfe ? '/admin/nfe' : '/admin/conta';
 }
 
 /** Cartão: super admin ou usuário com acesso liberado. */
@@ -80,6 +82,13 @@ export async function requireCartao() {
 export async function requireEcommerce() {
   const sessao = await requireRepresentante('admin');
   if (!acessos(sessao.representante).ecommerce) redirect(telaInicial(sessao.representante));
+  return sessao;
+}
+
+/** NFE (emitidas, entradas, consulta por chave): super admin ou usuário com acesso liberado. */
+export async function requireNfe() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).nfe) redirect(telaInicial(sessao.representante));
   return sessao;
 }
 
