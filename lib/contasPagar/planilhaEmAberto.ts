@@ -140,7 +140,7 @@ const br = (iso: string) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}`;
 export async function planilhaEmAberto(titulos: TituloCP[], de: string, ate: string): Promise<ExcelJS.Workbook> {
   const ExcelJSMod = (await import('exceljs')).default;
   const wb = new ExcelJSMod.Workbook();
-  wb.creator = 'Natuhair Finanças';
+  wb.creator = 'Natuhair';
   // as fórmulas de total são recalculadas pelo Excel ao abrir (o resultado zero não fica gravado)
   wb.calcProperties = { fullCalcOnLoad: true };
   const porCat = agrupar(titulos);

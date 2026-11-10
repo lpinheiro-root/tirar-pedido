@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
   const meses = Array.from(porMes.keys()).sort((a, b) => a.split('-').reverse().join().localeCompare(b.split('-').reverse().join()));
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Natuhair Finanças';
+  wb.creator = 'Natuhair';
 
   // faixa da aba "Listas" (criada no fim, escondida) com as opções de cada campo
   const faixaDaLista = (campo: CampoAcompanhamento) => {

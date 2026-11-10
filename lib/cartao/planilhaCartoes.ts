@@ -242,7 +242,7 @@ export async function planilhaDasFaturas(
 ): Promise<Uint8Array> {
   const ExcelJSMod = (await import('exceljs')).default;
   const wb = new ExcelJSMod.Workbook();
-  wb.creator = 'Natuhair Finanças';
+  wb.creator = 'Natuhair';
 
   const proximaLinha = new Map<string, number>();
   const ordenadas = [...faturas].sort((a, b) =>

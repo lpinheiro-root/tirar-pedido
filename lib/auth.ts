@@ -35,7 +35,7 @@ export async function requireRepresentante(role?: 'representante' | 'admin'): Pr
   return { userId: user.id, representante: representante as Representante };
 }
 
-/** Natuhair Finanças: exige o super admin (vê tudo e gerencia usuários). */
+/** Natuhair: exige o super admin (vê tudo e gerencia usuários). */
 export async function requireSuperAdmin() {
   const sessao = await requireRepresentante('admin');
   if (!sessao.representante.super_admin) redirect(telaInicial(sessao.representante));

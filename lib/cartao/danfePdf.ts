@@ -198,7 +198,7 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
 
   const pdf = await PDFDocument.create();
   pdf.setTitle(`NF-e ${txt(ide.nNF)} - ${limpar(txt(emit.xNome))}`);
-  pdf.setProducer('Natuhair Finanças');
+  pdf.setProducer('Natuhair');
   const d = new Folha(
     pdf,
     await pdf.embedFont(StandardFonts.Helvetica),
@@ -516,7 +516,7 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
       font: d.fi,
       color: PRETO,
     });
-    fl.page.drawText('DANFE gerado pelo Natuhair Finanças a partir do XML autorizado.', {
+    fl.page.drawText('DANFE gerado pelo Natuhair a partir do XML autorizado.', {
       x: M,
       y: M - 6,
       size: 5.5,

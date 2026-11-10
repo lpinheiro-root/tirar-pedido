@@ -117,10 +117,10 @@ export async function gerarRelatorioConciliacao(r: ResultadoConciliacao): Promis
   const nomeMes = `${MESES[mes - 1]} de ${ano}`;
   const pdf = await PDFDocument.create();
   pdf.setTitle(`Conciliação E-Commerce - ${nomeMes}`);
-  pdf.setProducer('Natuhair Finanças');
+  pdf.setProducer('Natuhair');
   const f = await pdf.embedFont(StandardFonts.Helvetica);
   const fb = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const d = new Relatorio(pdf, f, fb, `Natuhair Finanças - Conciliação E-Commerce - ${nomeMes}`);
+  const d = new Relatorio(pdf, f, fb, `Natuhair - Conciliação E-Commerce - ${nomeMes}`);
 
   // ── cabeçalho e resumo ──
   d.texto(`Conciliação E-Commerce — ${nomeMes}`, M, d.y - 16, 17, fb);

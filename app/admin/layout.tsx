@@ -7,7 +7,7 @@ import { IconCart, IconCreditCard, IconDocument, IconReceipt, IconUsers } from '
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
 
-  // Natuhair Finanças: cada usuário vê só as telas liberadas na tela de Usuários.
+  // Natuhair: cada usuário vê só as telas liberadas na tela de Usuários.
   const acesso = acessos(representante);
   const links = [
     ...(acesso.cartao ? [{ href: '/admin/cartao', label: 'Cartão', icon: <IconCreditCard /> }] : []),

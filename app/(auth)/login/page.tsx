@@ -18,7 +18,7 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-h1 text-on-surface">Natuhair Finanças</h1>
+          <h1 className="text-h1 text-on-surface">Natuhair</h1>
           <p className="mt-1 text-body text-on-surface-variant">
             Cartões, compras e notas fiscais
           </p>
