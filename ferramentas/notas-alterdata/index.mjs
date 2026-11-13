@@ -21,7 +21,6 @@ import { caixasConfiguradas, xmlsDaCaixa } from './email.mjs';
 import { xmlsNovosDoNfstock } from './nfstock.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const ARQ_ESTADO = path.join(DIR, 'estado.json');
 
 function lerEnv(arquivo) {
   if (!fs.existsSync(arquivo)) return {};
@@ -41,6 +40,10 @@ const LOTE = 200;
 // carga histórica pontual: MESES=2601,2602,... (AAMM) e SO_DEVOLUCOES=1
 const MESES_FIXOS = (env.MESES ?? '').split(',').map((m) => m.trim()).filter((m) => /^\d{4}$/.test(m));
 const SO_DEVOLUCOES = env.SO_DEVOLUCOES === '1';
+// SO_NOVAS=1: grava só notas que ainda não estão no banco (carga histórica sem desfazer
+// cancelamentos nem mexer nas já gravadas); ESTADO_ARQ: arquivo de controle separado
+const SO_NOVAS = env.SO_NOVAS === '1';
+const ARQ_ESTADO = path.join(DIR, env.ESTADO_ARQ || 'estado.json');
 const MAX_POR_RODADA = Number(env.MAX_POR_RODADA ?? 3000);
 const UFS = ['11', '12', '13', '14', '15', '16', '17', '21', '22', '23', '24', '25', '26', '27', '28', '29', '31', '32', '33', '35', '41', '42', '43', '50', '51', '52', '53'];
 
@@ -212,7 +215,7 @@ async function buscarAlterdata(supabase, estado, meses) {
       }
       if (SO_DEVOLUCOES) notas.splice(0, notas.length, ...notas.filter((n) => n.tipo === 'devolucao'));
       if (notas.length) {
-        const { error } = await supabase.from('cartao_notas').upsert(notas, { onConflict: 'chave' });
+        const { error } = await supabase.from('cartao_notas').upsert(notas, { onConflict: 'chave', ignoreDuplicates: SO_NOVAS });
         if (error) throw new Error(`Supabase: ${error.message}`);
         enviadas += notas.length;
       }
@@ -293,7 +296,7 @@ async function buscarNfstock(supabase, estado) {
   }
   const gravar = SO_DEVOLUCOES ? notas.filter((n) => n.tipo === 'devolucao') : notas;
   for (let i = 0; i < gravar.length; i += LOTE) {
-    const { error } = await supabase.from('cartao_notas').upsert(gravar.slice(i, i + LOTE), { onConflict: 'chave' });
+    const { error } = await supabase.from('cartao_notas').upsert(gravar.slice(i, i + LOTE), { onConflict: 'chave', ignoreDuplicates: SO_NOVAS });
     if (error) throw new Error(`Supabase: ${error.message}`);
   }
   marcarVistas(novas);
