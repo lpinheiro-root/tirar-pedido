@@ -2,7 +2,8 @@ import ExcelJS from 'exceljs';
 import { type NextRequest } from 'next/server';
 import { requireDevolucoes } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-import { buscarDevolucoes, lerFiltros, type Devolucao } from '@/lib/nfeRecebidas';
+import { buscarDevolucoes, buscarNotasFornecedores, lerFiltros, type Devolucao, type FiltrosNFe } from '@/lib/nfeRecebidas';
+import { formatarCnpj } from '@/lib/empresas';
 import { CAMPOS, nomeEmpresaPlanilha, numeroDaChave, opcoesDoCampo, type CampoAcompanhamento } from '@/lib/devolucoes';
 import { buscarTodas } from '@/lib/supabasePaginado';
 import type { Acompanhamento } from '@/lib/nfeRecebidas';
@@ -66,9 +67,10 @@ export async function GET(request: NextRequest) {
   await requireDevolucoes();
   const supabase = createClient();
   const filtros = lerFiltros(Object.fromEntries(request.nextUrl.searchParams));
+  if (filtros.aba === 'fornecedores') return exportarFornecedores(supabase, filtros);
   const [devolucoes, todas, respostas] = await Promise.all([
     buscarDevolucoes(supabase, filtros),
-    buscarDevolucoes(supabase, { empresa: '', mes: '', busca: '', situacao: '' }),
+    buscarDevolucoes(supabase, { aba: 'devolucoes', empresa: '', mes: '', busca: '', situacao: '' }),
     buscarTodas<Acompanhamento>((de, ate) =>
       supabase
         .from('devolucoes_acompanhamento')
@@ -185,6 +187,68 @@ export async function GET(request: NextRequest) {
 
   const buffer = await wb.xlsx.writeBuffer();
   const nome = `STATUS DE DEVOLUCAO ${filtros.mes || new Date().getFullYear()}.xlsx`;
+  return new Response(new Uint8Array(buffer as ArrayBuffer), {
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${nome}"`,
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/** Excel simples das notas de fornecedores (uma linha por NF-e). */
+async function exportarFornecedores(supabase: ReturnType<typeof createClient>, filtros: FiltrosNFe) {
+  const vazio = { aba: 'fornecedores' as const, empresa: '', mes: '', busca: '', situacao: '' as const };
+  const [notas, todas] = await Promise.all([buscarNotasFornecedores(supabase, filtros), buscarNotasFornecedores(supabase, vazio)]);
+  const unidades = Array.from(
+    new Map(todas.filter((n) => n.cnpj_destinatario).map((n) => [n.cnpj_destinatario!, { cnpj: n.cnpj_destinatario!, uf: n.empresa_uf }])).values()
+  );
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Natuhair';
+  const ws = wb.addWorksheet('Fornecedores');
+  const colunas = [
+    { titulo: 'Empresa', largura: 16 },
+    { titulo: 'Emissão', largura: 12 },
+    { titulo: 'Fornecedor', largura: 42 },
+    { titulo: 'CNPJ Fornecedor', largura: 20 },
+    { titulo: 'NF-e', largura: 11 },
+    { titulo: 'Valor R$', largura: 15 },
+    { titulo: 'Transportadora', largura: 30 },
+    { titulo: 'Situação', largura: 12 },
+    { titulo: 'Chave de acesso', largura: 48 },
+  ];
+  ws.columns = colunas.map((c) => ({ width: c.largura }));
+  const cab = ws.addRow(colunas.map((c) => c.titulo));
+  cab.eachCell((cel) => {
+    cel.font = { ...FONTE, bold: true };
+    cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+    cel.border = BORDA;
+  });
+  for (const n of [...notas].sort((a, b) => (a.data_emissao ?? '').localeCompare(b.data_emissao ?? ''))) {
+    const linha = ws.addRow([
+      nomeEmpresaPlanilha(n.cnpj_destinatario, n.nome_destinatario, n.empresa_uf, unidades),
+      n.data_emissao ? new Date(new Date(n.data_emissao).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })) : null,
+      n.nome_emitente ?? '',
+      formatarCnpj(n.cnpj_emitente),
+      Number(numeroDaChave(n.chave)),
+      n.valor_total != null ? Number(n.valor_total) : null,
+      n.transportadora ?? '',
+      n.situacao === 'cancelada' ? 'Cancelada' : 'Autorizada',
+      n.chave,
+    ]);
+    linha.eachCell({ includeEmpty: true }, (cel) => {
+      cel.font = FONTE;
+      cel.border = BORDA;
+    });
+    linha.getCell(2).numFmt = 'dd/mm/yyyy';
+    linha.getCell(6).numFmt = MOEDA;
+  }
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: colunas.length } };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const nome = `NFE FORNECEDORES ${filtros.mes || new Date().getFullYear()}.xlsx`;
   return new Response(new Uint8Array(buffer as ArrayBuffer), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

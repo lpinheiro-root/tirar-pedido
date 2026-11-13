@@ -4,16 +4,18 @@ import { ocorrenciaEncerrada } from '@/lib/devolucoes';
 
 /** Filtros da tela NF-e Recebidas (devoluções), vindos da URL. */
 export interface FiltrosNFe {
+  aba: 'devolucoes' | 'fornecedores';
   empresa: string; // CNPJ da empresa do grupo ou '' (todas)
   mes: string; // yyyy-mm ou '' (todos)
-  busca: string; // cliente (nome ou documento) ou número da NFD
-  situacao: '' | 'abertas' | 'encerradas' | 'canceladas';
+  busca: string; // cliente/fornecedor (nome ou documento) ou número da nota
+  situacao: '' | 'abertas' | 'encerradas' | 'canceladas' | 'autorizadas';
 }
 
-const SITUACOES = ['abertas', 'encerradas', 'canceladas'] as const;
+const SITUACOES = ['abertas', 'encerradas', 'canceladas', 'autorizadas'] as const;
 
 export function lerFiltros(params: Record<string, string | undefined>): FiltrosNFe {
   return {
+    aba: params.aba === 'fornecedores' ? 'fornecedores' : 'devolucoes',
     empresa: /^\d{14}$/.test(params.empresa ?? '') ? params.empresa! : '',
     mes: /^\d{4}-\d{2}$/.test(params.mes ?? '') ? params.mes! : '',
     busca: (params.busca ?? '').trim().slice(0, 80),
@@ -23,6 +25,7 @@ export function lerFiltros(params: Record<string, string | undefined>): FiltrosN
 
 export function filtrosParaUrl(f: FiltrosNFe, extra: Record<string, string> = {}): string {
   const q = new URLSearchParams();
+  if (f.aba === 'fornecedores') q.set('aba', 'fornecedores');
   if (f.empresa) q.set('empresa', f.empresa);
   if (f.mes) q.set('mes', f.mes);
   if (f.busca) q.set('busca', f.busca);
@@ -100,7 +103,48 @@ export async function buscarDevolucoes(supabase: SupabaseClient, f: FiltrosNFe):
     // a chave é PK do acompanhamento: o PostgREST devolve objeto (um por NFD), não lista
     return q.order('data_emissao', { ascending: false }).order('chave').range(de, ate).returns<Devolucao[]>();
   });
-  if (!f.situacao) return linhas;
+  if (!f.situacao || f.situacao === 'autorizadas') return linhas;
   const alvo = ({ abertas: 'aberta', encerradas: 'encerrada', canceladas: 'cancelada' } as const)[f.situacao];
   return linhas.filter((d) => situacaoDevolucao(d) === alvo);
+}
+
+/** NF-e de fornecedores (compras) recebidas pelas empresas do grupo. */
+export interface NotaFornecedor {
+  id: string;
+  chave: string;
+  data_emissao: string | null;
+  valor_total: number | null;
+  situacao: string;
+  cnpj_destinatario: string | null;
+  nome_destinatario: string | null;
+  empresa_uf: string | null;
+  cnpj_emitente: string | null;
+  nome_emitente: string | null;
+  transportadora: string | null;
+}
+
+const COLUNAS_FORNECEDOR =
+  'id, chave, data_emissao, valor_total, situacao, cnpj_destinatario, nome_destinatario, empresa_uf, cnpj_emitente, nome_emitente, transportadora';
+
+export async function buscarNotasFornecedores(supabase: SupabaseClient, f: FiltrosNFe): Promise<NotaFornecedor[]> {
+  return buscarTodas<NotaFornecedor>((de, ate) => {
+    let q = supabase.from('cartao_notas').select(COLUNAS_FORNECEDOR).eq('tipo', 'compra');
+    if (f.empresa) q = q.eq('cnpj_destinatario', f.empresa);
+    if (f.mes) {
+      const [ano, mes] = f.mes.split('-').map(Number);
+      const fim = mes === 12 ? `${ano + 1}-01` : `${ano}-${String(mes + 1).padStart(2, '0')}`;
+      q = q.gte('data_emissao', `${f.mes}-01T00:00:00-03:00`).lt('data_emissao', `${fim}-01T00:00:00-03:00`);
+    }
+    if (f.situacao === 'canceladas') q = q.eq('situacao', 'cancelada');
+    else if (f.situacao) q = q.neq('situacao', 'cancelada');
+    if (f.busca) {
+      const digitos = f.busca.replace(/\D/g, '');
+      const nome = f.busca.replace(/[%,()]/g, ' ');
+      const ou = [`nome_emitente.ilike.%${nome}%`];
+      if (digitos.length >= 3 && digitos.length <= 9) ou.push(`chave.like.%${digitos.padStart(9, '0')}%`);
+      if (digitos.length >= 4) ou.push(`cnpj_emitente.like.%${digitos}%`);
+      q = q.or(ou.join(','));
+    }
+    return q.order('data_emissao', { ascending: false }).order('chave').range(de, ate).returns<NotaFornecedor[]>();
+  });
 }
