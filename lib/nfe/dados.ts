@@ -129,6 +129,26 @@ export function limparChave(s: string): string {
   return s.replace(/\D/g, '');
 }
 
+/**
+ * Números de nota em sequência ("1000-1050", "1000 a 1050", "1000 até 1050") ou em lista
+ * ("1000, 1003; 1007"), misturados à vontade. Só números puros (sem ponto), para não
+ * confundir com CPF/CNPJ formatado. null quando a busca não é isso.
+ */
+export function sequencia(busca: string): [number, number][] | null {
+  const itens = busca.split(/\s*[,;]\s*/).filter(Boolean);
+  const faixas: [number, number][] = [];
+  for (const item of itens) {
+    const m = item.match(/^(\d{1,9})(?:\s*(?:-|a|à|ate|até)\s*(\d{1,9}))?$/i);
+    if (!m) return null;
+    const de = Number(m[1]);
+    const ate = m[2] ? Number(m[2]) : de;
+    if (ate < de) return null;
+    faixas.push([de, ate]);
+  }
+  // um número sozinho continua na busca normal (pode ser raiz de CNPJ)
+  return faixas.length > 1 || (faixas[0] && faixas[0][0] !== faixas[0][1]) ? faixas : null;
+}
+
 interface Colunas {
   data: string;
   empresa: string;
@@ -162,6 +182,16 @@ function condicoes(req: sql.Request, f: Filtros, c: Colunas): string[] {
   const digitos = limparChave(b);
   const docLimpo = `REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(${c.documento}, ''), '.', ''), '/', ''), '-', ''), ' ', '')`;
   const numero = `TRY_CAST(${c.numero} AS bigint) = @num`;
+  const seq = sequencia(b);
+  if (seq) {
+    // sequência "1000-1050" / "1000 a 1050" e lista "1000, 1003; 1007"
+    const partes = seq.map(([de, ate], i) => {
+      req.input(`nde${i}`, sql.BigInt, de).input(`nate${i}`, sql.BigInt, ate);
+      return `TRY_CAST(${c.numero} AS bigint) BETWEEN @nde${i} AND @nate${i}`;
+    });
+    w.push(`(${partes.join(' OR ')})`);
+    return w;
+  }
   if (/^[\d.\-/\s]+$/.test(b) && digitos) {
     if (digitos.length === 44) {
       req.input('chave', sql.VarChar(44), digitos);
@@ -239,7 +269,7 @@ export async function buscarEmitidas(f: Filtros, limite = LIMITE_CONSULTA): Prom
     FROM dbo.fscNFCapa c
     LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
     ${w.length ? `WHERE ${w.join(' AND ')}` : ''}
-    ORDER BY c.Emissao DESC, c.fscNFID DESC`);
+    ORDER BY ${sequencia(f.busca) ? 'TRY_CAST(c.Numero AS bigint), c.EmpresaID, ' : ''}c.Emissao DESC, c.fscNFID DESC`);
 
   return recordset.map(
     (r): NotaEmitida => ({

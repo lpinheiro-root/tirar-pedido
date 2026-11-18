@@ -106,9 +106,17 @@ function Filtro({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<stri
             name="busca"
             defaultValue={f.busca}
             autoFocus
-            placeholder={aba === 'emitidas' ? 'Nº da nota, destinatário, CNPJ ou chave' : 'Nº da nota, fornecedor, CNPJ ou chave'}
+            placeholder={
+              aba === 'emitidas'
+                ? 'Nº da nota (ou 1000-1050), destinatário, CNPJ ou chave'
+                : 'Nº da nota (ou 1000-1050), fornecedor, CNPJ ou chave'
+            }
             className={`${campo} w-full`}
           />
+          <p className="mt-1 text-label text-on-surface-variant">
+            Sequência: <span className="font-medium">1000-1050</span> ou <span className="font-medium">1000 a 1050</span>; lista:{' '}
+            <span className="font-medium">1000, 1003, 1010-1015</span>
+          </p>
         </div>
         <div>
           <label className="mb-1 block text-label text-on-surface-variant">{rotuloData}</label>
