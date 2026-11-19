@@ -44,6 +44,7 @@ export async function GET(request: Request) {
       { header: 'Natureza original', key: 'origNatureza', width: 28 },
       { header: 'Valor original', key: 'origValor', width: 15, style: { numFmt: MOEDA } },
       { header: 'Situação original', key: 'origSituacao', width: 16 },
+      { header: 'Devolução da original', key: 'devolucao', width: 44 },
       { header: 'NF nova', key: 'novaNumero', width: 12 },
       { header: 'Emissão nova', key: 'novaEmissao', width: 13, style: { numFmt: 'dd/mm/yyyy' } },
       { header: 'Natureza nova', key: 'novaNatureza', width: 28 },
@@ -66,6 +67,14 @@ export async function GET(request: Request) {
         origNatureza: o?.natureza ?? '',
         origValor: originais.length ? valorOrig : null,
         origSituacao: originais.map((x) => SITUACAO[x.situacao]).join(', '),
+        devolucao:
+          originais
+            .flatMap((x) => x.devolucoes)
+            .map(
+              (d) =>
+                `NF ${d.numero} de ${d.emissao.split('-').reverse().join('/')} (${d.origem === 'cliente' ? 'NFD do cliente' : 'entrada da empresa'})${d.cancelada ? ' cancelada' : ''}`
+            )
+            .join('; ') || (originais.length ? 'Sem devolução registrada' : ''),
         novaNumero: nova.numero,
         novaEmissao: data(nova.emissao),
         novaNatureza: nova.natureza,

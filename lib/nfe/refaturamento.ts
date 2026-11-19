@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import sql from 'mssql';
 import { getPool } from '@/lib/sqlserver';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import type { Filtros, NotaEmitida } from './dados';
 
 /**
@@ -34,12 +35,24 @@ interface Indice {
   itens: ItemIndice[];
 }
 
+/** Devolução da nota original: entrada emitida pela empresa (ERP) ou NFD emitida pelo cliente. */
+export interface DevolucaoOriginal {
+  numero: string;
+  emissao: string;
+  valor: number;
+  origem: 'empresa' | 'cliente';
+  cancelada: boolean;
+  chave: string;
+}
+
+export type NotaOriginal = NotaEmitida & { devolucoes: DevolucaoOriginal[] };
+
 export interface Refaturamento {
   nova: NotaEmitida;
   /** Números citados no texto ("NF 8272"). */
   refs: string[];
   /** Notas originais achadas no ERP (mesma empresa e número, emitidas antes da nova). */
-  originais: NotaEmitida[];
+  originais: NotaOriginal[];
   texto: string;
 }
 
@@ -107,6 +120,58 @@ async function lerFaixa(pool: sql.ConnectionPool, de: number, ate: number): Prom
     .filter((i) => /REFAT/i.test(i.texto));
 }
 
+/**
+ * Devoluções de cada nota original (pela chave):
+ * - entrada de devolução emitida pela empresa no ERP, que cita a original (FscNFReferenciadas);
+ * - NFD emitida pelo cliente, lida do NF-Stock (cartao_notas, aba NF-e Recebidas).
+ */
+async function devolucoesDasOriginais(pool: sql.ConnectionPool, chaves: string[]): Promise<Map<string, DevolucaoOriginal[]>> {
+  const mapa = new Map<string, DevolucaoOriginal[]>();
+  const unicas = Array.from(new Set(chaves.filter((c) => /^\d{44}$/.test(c))));
+  if (!unicas.length) return mapa;
+  const add = (ref: string, d: DevolucaoOriginal) => {
+    const lista = mapa.get(ref) ?? [];
+    if (!lista.some((x) => (x.chave && x.chave === d.chave) || (x.numero === d.numero && x.emissao === d.emissao))) lista.push(d);
+    mapa.set(ref, lista);
+  };
+
+  for (let i = 0; i < unicas.length; i += 500) {
+    const lote = unicas.slice(i, i + 500);
+    const { recordset } = await pool.request().query(`
+      SELECT RTRIM(r.ChaveNFE) AS ref, RTRIM(c.Numero) AS numero, CONVERT(varchar(10), c.Emissao, 23) AS emissao,
+        CAST(ISNULL(t.ValorTotal, 0) AS float) AS valor, c.Cancelada AS cancelada, RTRIM(ISNULL(c.ChaveNFE, '')) AS chave
+      FROM dbo.FscNFReferenciadas r
+      JOIN dbo.fscNFCapa c ON c.fscNFID = r.fscNFId
+      LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
+      WHERE RTRIM(r.ChaveNFE) IN (${lote.map((c) => `'${c}'`).join(',')}) AND UPPER(c.NaturezaOp) LIKE '%DEVOLU%'`);
+    for (const r of recordset) add(r.ref, { ...r, cancelada: Boolean(r.cancelada), origem: 'empresa' });
+  }
+
+  try {
+    const { data } = await createServiceRoleClient()
+      .from('cartao_notas')
+      .select('chave, data_emissao, valor_total, situacao, devolucao_origem, notas_origem')
+      .eq('tipo', 'devolucao')
+      .overlaps('notas_origem', unicas);
+    for (const d of data ?? []) {
+      for (const ref of (d.notas_origem as string[]).filter((c) => unicas.includes(c))) {
+        add(ref, {
+          numero: String(Number(String(d.chave).slice(25, 34))),
+          emissao: new Date(d.data_emissao).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }),
+          valor: Number(d.valor_total ?? 0),
+          origem: d.devolucao_origem === 'cliente' ? 'cliente' : 'empresa',
+          cancelada: d.situacao === 'cancelada',
+          chave: d.chave,
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[refaturamento] NFD do NF-Stock', e);
+  }
+  for (const lista of Array.from(mapa.values())) lista.sort((a, b) => a.emissao.localeCompare(b.emissao));
+  return mapa;
+}
+
 let emAndamento: Promise<Indice> | null = null;
 
 /** Atualiza o índice: monta aos poucos na primeira vez; depois lê só as notas novas. */
@@ -162,7 +227,7 @@ export async function buscarRefaturamentos(f: Filtros): Promise<ResultadoRefatur
     candidatas.push(...recordset.map(comSituacao));
   }
 
-  const itens: Refaturamento[] = [];
+  const ligados: { nova: NotaEmitida; refs: string[]; originais: NotaEmitida[]; texto: string }[] = [];
   for (const item of indice.itens) {
     const nova = porId.get(item.id);
     if (!nova) continue;
@@ -175,8 +240,17 @@ export async function buscarRefaturamentos(f: Filtros): Promise<ResultadoRefatur
       // a mais recente antes da nova
       return escolha.sort((a, b) => b.emissao.localeCompare(a.emissao) || b.id - a.id).slice(0, 1);
     });
-    itens.push({ nova, refs: item.refs, originais, texto: item.texto });
+    ligados.push({ nova, refs: item.refs, originais, texto: item.texto });
   }
+
+  const devolucoes = await devolucoesDasOriginais(
+    pool,
+    ligados.flatMap((l) => l.originais.map((o) => o.chave)).filter((c) => c.length === 44)
+  );
+  const itens: Refaturamento[] = ligados.map((l) => ({
+    ...l,
+    originais: l.originais.map((o) => ({ ...o, devolucoes: devolucoes.get(o.chave) ?? [] })),
+  }));
 
   const b = f.busca.trim();
   const digitos = b.replace(/\D/g, '');

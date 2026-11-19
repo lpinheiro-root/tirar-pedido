@@ -455,9 +455,9 @@ function Refaturamentos({ r, f, empresa }: { r: ResultadoRefaturamento; f: Filtr
           { t: 'Refaturamentos', v: String(itens.length), d: periodo },
           { t: 'Valor refaturado', v: formatCurrency(valorNovas), c: 'text-green-700', d: 'notas novas autorizadas' },
           {
-            t: 'Original cancelada',
-            v: String(itens.filter((i) => i.originais.some((o) => o.situacao === 'cancelada')).length),
-            c: 'text-error',
+            t: 'Original devolvida',
+            v: String(itens.filter((i) => i.originais.some((o) => o.devolucoes.some((d) => !d.cancelada))).length),
+            d: `${itens.filter((i) => i.originais.length && !i.originais.some((o) => o.devolucoes.some((d) => !d.cancelada))).length} sem devolução registrada`,
           },
           { t: 'Sem nota original', v: String(semOriginal), c: semOriginal ? 'text-amber-700' : 'text-on-surface', d: 'nº citado não achado no ERP' },
         ]}
@@ -506,6 +506,25 @@ function Refaturamentos({ r, f, empresa }: { r: ResultadoRefaturamento; f: Filtr
                               {o.natureza} · {formatCurrency(o.valor)}
                             </div>
                             <Selo s={o.situacao} />
+                            {o.devolucoes.length ? (
+                              o.devolucoes.map((d) => (
+                                <div
+                                  key={`${d.chave}${d.numero}`}
+                                  className={`mt-1 text-label ${d.cancelada ? 'text-on-surface-variant line-through' : 'text-on-surface'}`}
+                                  title={d.origem === 'cliente' ? 'NFD emitida pelo cliente' : 'Nota de devolução emitida pela empresa'}
+                                >
+                                  ↩ Devolvida: NF {d.numero} · {br(d.emissao)} · {formatCurrency(d.valor)}{' '}
+                                  <span className="text-on-surface-variant">({d.origem === 'cliente' ? 'NFD do cliente' : 'entrada da empresa'})</span>
+                                  {d.chave && d.origem === 'empresa' && (
+                                    <a href={`/api/nfe/danfe?chave=${d.chave}`} target="_blank" className="ml-1 font-medium text-primary hover:underline">
+                                      DANFE
+                                    </a>
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="mt-1 text-label text-amber-800">Sem devolução registrada</div>
+                            )}
                           </div>
                         ))
                       ) : (
