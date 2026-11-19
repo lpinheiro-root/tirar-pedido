@@ -377,6 +377,127 @@ function Ranking({
   );
 }
 
+type Metrica = 'bruto' | 'despesas' | 'custo_pct' | 'liquido' | 'recompras';
+const METRICAS: { id: Metrica; rotulo: string }[] = [
+  { id: 'bruto', rotulo: 'Antecipado' },
+  { id: 'despesas', rotulo: 'Custo R$' },
+  { id: 'custo_pct', rotulo: 'Custo %' },
+  { id: 'recompras', rotulo: 'Recompras' },
+  { id: 'liquido', rotulo: 'Líquido' },
+];
+function valorMetrica(s: Soma | undefined, m: Metrica): string {
+  if (!s || !s.qtd) return '';
+  if (m === 'custo_pct') return s.bruto ? pct(s.despesas / s.bruto) : '—';
+  const v = s[m];
+  return v ? curta(v) : '—';
+}
+
+/** Tabela FIDC × mês: cada FIDC numa linha, cada mês numa coluna (mais recente primeiro). */
+function FidcPorMes({ ops }: { ops: Operacao[] }) {
+  const [metrica, setMetrica] = useState<Metrica>('bruto');
+  const meses = useMemo(() => [...new Set(ops.map((o) => o.data.slice(0, 7)))].sort().reverse(), [ops]);
+  const celulas = useMemo(() => agrupar(ops, (o) => `${o.fidc}|${o.data.slice(0, 7)}`), [ops]);
+  const porFidc = useMemo(() => agrupar(ops, (o) => o.fidc), [ops]);
+  const porMes = useMemo(() => agrupar(ops, (o) => o.data.slice(0, 7)), [ops]);
+  const total = useMemo(() => ops.reduce(somar, vazia()), [ops]);
+  const fidcs = [...porFidc.entries()].sort((a, b) => b[1].bruto - a[1].bruto).map(([f]) => f);
+
+  // intensidade da cor da célula, para bater o olho em quem pesou mais no mês
+  const maxCelula = Math.max(0, ...[...celulas.values()].map((s) => s.bruto));
+  const fundo = (s: Soma | undefined) => {
+    if (!s || metrica !== 'bruto' || !maxCelula) return undefined;
+    return { backgroundColor: `rgba(99, 14, 212, ${(0.04 + (s.bruto / maxCelula) * 0.22).toFixed(3)})` };
+  };
+
+  return (
+    <Card>
+      <div className="border-b border-border-muted px-4 py-3">
+        <p className="text-h2 text-on-surface">FIDC por mês</p>
+        <p className="text-label text-on-surface-variant">Cada FIDC numa linha e cada mês numa coluna. Role para o lado para ver os meses mais antigos.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {METRICAS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMetrica(m.id)}
+              className={`rounded-full border px-3 py-1 text-label font-medium transition-colors ${
+                metrica === m.id
+                  ? 'border-primary bg-primary text-on-primary'
+                  : 'border-border-muted text-on-surface-variant hover:border-primary hover:text-primary'
+              }`}
+            >
+              {m.rotulo}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="max-h-[560px] overflow-auto">
+        <table className="w-full border-separate border-spacing-0 text-body-sm">
+          <thead>
+            <tr className="text-label uppercase text-on-surface-variant">
+              <th className="sticky left-0 top-0 z-20 border-b border-border-muted bg-surface-container-lowest px-4 py-2 text-left font-medium">
+                FIDC
+              </th>
+              <th className="sticky top-0 z-10 border-b border-l border-border-muted bg-surface-container-low px-3 py-2 text-right font-semibold text-on-surface">
+                Total
+              </th>
+              {meses.map((m) => (
+                <th
+                  key={m}
+                  className="sticky top-0 z-10 whitespace-nowrap border-b border-border-muted bg-surface-container-lowest px-3 py-2 text-right font-medium capitalize"
+                >
+                  {nomeMes(m)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {fidcs.map((f) => (
+              <tr key={f} className="hover:bg-primary/5">
+                <td className="sticky left-0 z-10 whitespace-nowrap border-b border-border-muted bg-surface-container-lowest px-4 py-1.5 font-medium text-on-surface">
+                  {f}
+                </td>
+                <td className="whitespace-nowrap border-b border-l border-border-muted bg-surface-container-low px-3 py-1.5 text-right font-semibold tabular-nums text-on-surface">
+                  {valorMetrica(porFidc.get(f), metrica)}
+                </td>
+                {meses.map((m) => {
+                  const s = celulas.get(`${f}|${m}`);
+                  return (
+                    <td
+                      key={m}
+                      style={fundo(s)}
+                      title={s ? `${f} · ${nomeMes(m)}: ${moeda(s.bruto)} antecipado, custo ${moeda(s.despesas)} (${pct(s.despesas / (s.bruto || 1))}), ${s.qtd} operações` : undefined}
+                      className="whitespace-nowrap border-b border-border-muted px-3 py-1.5 text-right tabular-nums text-on-surface"
+                    >
+                      {valorMetrica(s, metrica)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="font-semibold text-on-surface">
+              <td className="sticky bottom-0 left-0 z-20 border-t border-border-muted bg-surface-container-low px-4 py-2">Total</td>
+              <td className="sticky bottom-0 z-10 whitespace-nowrap border-l border-t border-border-muted bg-surface-container-low px-3 py-2 text-right tabular-nums">
+                {valorMetrica(total, metrica)}
+              </td>
+              {meses.map((m) => (
+                <td
+                  key={m}
+                  className="sticky bottom-0 z-10 whitespace-nowrap border-t border-border-muted bg-surface-container-low px-3 py-2 text-right tabular-nums"
+                >
+                  {valorMetrica(porMes.get(m), metrica)}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 const porFidcChave = (o: Operacao) => o.fidc;
 const porEmpresaChave = (o: Operacao) => o.empresa;
 
@@ -595,6 +716,8 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
               onEscolher={setEmpresa}
             />
           </div>
+
+          <FidcPorMes ops={opsFidc} />
 
           <Card>
             <div className="border-b border-border-muted px-4 py-3">
