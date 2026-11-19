@@ -33,10 +33,11 @@ export async function criarUsuario(
   const acessoEcommerce = formData.get('acesso_ecommerce') === 'on';
   const acessoContasPagar = formData.get('acesso_contas_pagar') === 'on';
   const acessoNfe = formData.get('acesso_nfe') === 'on';
+  const acessoFidc = formData.get('acesso_fidc') === 'on';
 
   if (!nome || !email) return { erro: 'Preencha nome e e-mail.' };
-  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce && !acessoContasPagar && !acessoNfe) {
-    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar ou NFE.' };
+  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce && !acessoContasPagar && !acessoNfe && !acessoFidc) {
+    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar, NFE ou FIDC.' };
   }
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
   if (senha !== confirmacao) return { erro: 'A confirmação não confere com a senha.' };
@@ -63,6 +64,8 @@ export async function criarUsuario(
     ...(acessoContasPagar ? { acesso_contas_pagar: true } : {}),
     // a coluna só existe depois do supabase/acesso_nfe.sql
     ...(acessoNfe ? { acesso_nfe: true } : {}),
+    // a coluna só existe depois do supabase/fidc.sql
+    ...(acessoFidc ? { acesso_fidc: true } : {}),
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
@@ -71,6 +74,9 @@ export async function criarUsuario(
     }
     if (erroInsert.message.includes('acesso_nfe')) {
       return { erro: 'Falta rodar o supabase/acesso_nfe.sql no Supabase para liberar a NFE.' };
+    }
+    if (erroInsert.message.includes('acesso_fidc')) {
+      return { erro: 'Falta rodar o supabase/fidc.sql no Supabase para liberar a FIDC.' };
     }
     return { erro: `Falha ao registrar o usuário: ${erroInsert.message}` };
   }
@@ -99,7 +105,7 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
 /** Libera ou retira o acesso a uma tela: Cartão ou NF-e Recebidas (controle de devoluções). */
 export async function alternarAcesso(
   id: string,
-  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe',
+  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe' | 'fidc',
   acesso: boolean
 ): Promise<{ erro?: string }> {
   await requireSuperAdmin();
@@ -107,7 +113,8 @@ export async function alternarAcesso(
   const { error } = await createServiceRoleClient().from('representantes').update({ [coluna]: acesso }).eq('id', id);
   revalidatePath('/admin/usuarios');
   if (error?.message.includes(coluna)) {
-    return { erro: `Falta rodar o supabase/${coluna}.sql no Supabase para liberar essa opção.` };
+    const arquivo = tela === 'fidc' ? 'fidc' : coluna;
+    return { erro: `Falta rodar o supabase/${arquivo}.sql no Supabase para liberar essa opção.` };
   }
   return error ? { erro: error.message } : {};
 }

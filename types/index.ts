@@ -52,6 +52,8 @@ export interface Representante {
   acesso_ecommerce?: boolean;
   acesso_contas_pagar?: boolean;
   acesso_nfe?: boolean;
+  /** aba FIDC (operações de antecipação; diretoria e financeiro) */
+  acesso_fidc?: boolean;
   criado_em: string;
 }
 

@@ -58,6 +58,7 @@ export function acessos(r: Representante) {
     ecommerce: Boolean(r.super_admin) || Boolean(r.acesso_ecommerce),
     contasPagar: Boolean(r.super_admin) || Boolean(r.acesso_contas_pagar),
     nfe: Boolean(r.super_admin) || Boolean(r.acesso_nfe),
+    fidc: Boolean(r.super_admin) || Boolean(r.acesso_fidc),
   };
 }
 
@@ -68,7 +69,15 @@ export function telaInicial(r: Representante) {
   if (a.devolucoes) return '/admin/nfe-recebidas';
   if (a.ecommerce) return '/admin/ecommerce';
   if (a.contasPagar) return '/admin/contas-pagar';
-  return a.nfe ? '/admin/nfe' : '/admin/conta';
+  if (a.nfe) return '/admin/nfe';
+  return a.fidc ? '/admin/fidc' : '/admin/conta';
+}
+
+/** FIDC (operações de antecipação): super admin ou usuário com acesso liberado. */
+export async function requireFidc() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).fidc) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** Cartão: super admin ou usuário com acesso liberado. */
