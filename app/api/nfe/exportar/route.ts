@@ -9,6 +9,7 @@ import {
   nomesEmpresas,
   periodoInvertido,
 } from '@/lib/nfe/dados';
+import { buscarRefaturamentos } from '@/lib/nfe/refaturamento';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,51 @@ export async function GET(request: Request) {
 
   const wb = new ExcelJS.Workbook();
   let nome: string;
-  if (aba === 'entradas') {
+  if (aba === 'refaturamento') {
+    nome = 'Refaturamento';
+    const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', ySplit: 1 }] });
+    ws.columns = [
+      { header: 'Empresa', key: 'empresa', width: 26 },
+      { header: 'Cliente', key: 'cliente', width: 42 },
+      { header: 'CNPJ/CPF', key: 'documento', width: 20 },
+      { header: 'NF original', key: 'origNumero', width: 12 },
+      { header: 'Emissão original', key: 'origEmissao', width: 14, style: { numFmt: 'dd/mm/yyyy' } },
+      { header: 'Natureza original', key: 'origNatureza', width: 28 },
+      { header: 'Valor original', key: 'origValor', width: 15, style: { numFmt: MOEDA } },
+      { header: 'Situação original', key: 'origSituacao', width: 16 },
+      { header: 'NF nova', key: 'novaNumero', width: 12 },
+      { header: 'Emissão nova', key: 'novaEmissao', width: 13, style: { numFmt: 'dd/mm/yyyy' } },
+      { header: 'Natureza nova', key: 'novaNatureza', width: 28 },
+      { header: 'Valor novo', key: 'novaValor', width: 15, style: { numFmt: MOEDA } },
+      { header: 'Situação nova', key: 'novaSituacao', width: 16 },
+      { header: 'Diferença', key: 'diferenca', width: 14, style: { numFmt: MOEDA } },
+      { header: 'Texto da nota', key: 'texto', width: 60 },
+      { header: 'Chave nova', key: 'chave', width: 48 },
+    ];
+    const { itens } = await buscarRefaturamentos(f);
+    for (const { nova, originais, refs, texto } of itens) {
+      const o = originais[0];
+      const valorOrig = originais.reduce((s, x) => s + x.valor, 0);
+      ws.addRow({
+        empresa: empresa(nova.empresaId),
+        cliente: nova.destinatario,
+        documento: nova.documento,
+        origNumero: originais.length ? originais.map((x) => x.numero).join(', ') : `${refs.join(', ')} (não achada)`,
+        origEmissao: o ? data(o.emissao) : null,
+        origNatureza: o?.natureza ?? '',
+        origValor: originais.length ? valorOrig : null,
+        origSituacao: originais.map((x) => SITUACAO[x.situacao]).join(', '),
+        novaNumero: nova.numero,
+        novaEmissao: data(nova.emissao),
+        novaNatureza: nova.natureza,
+        novaValor: nova.valor,
+        novaSituacao: SITUACAO[nova.situacao],
+        diferenca: originais.length ? nova.valor - valorOrig : null,
+        texto,
+        chave: nova.chave,
+      });
+    }
+  } else if (aba === 'entradas') {
     nome = 'Entradas';
     const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', ySplit: 1 }] });
     ws.columns = [

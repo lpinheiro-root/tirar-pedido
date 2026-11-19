@@ -27,6 +27,7 @@ import {
   type NotaNaoLancada,
 } from '@/lib/nfe/dados';
 import { chavesComXmlNoNfStock } from '@/lib/nfe/xml';
+import { buscarRefaturamentos, type ResultadoRefaturamento } from '@/lib/nfe/refaturamento';
 import { TabelaEmitidas } from './TabelaEmitidas';
 
 export const dynamic = 'force-dynamic';
@@ -107,16 +108,20 @@ function Filtro({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<stri
             defaultValue={f.busca}
             autoFocus
             placeholder={
-              aba === 'emitidas'
-                ? 'Nº da nota (ou 1000-1050), destinatário, CNPJ ou chave'
-                : 'Nº da nota (ou 1000-1050), fornecedor, CNPJ ou chave'
+              aba === 'refaturamento'
+                ? 'Nº da nota original ou da nova, cliente ou CNPJ'
+                : aba === 'emitidas'
+                  ? 'Nº da nota (ou 1000-1050), destinatário, CNPJ ou chave'
+                  : 'Nº da nota (ou 1000-1050), fornecedor, CNPJ ou chave'
             }
             className={`${campo} w-full`}
           />
-          <p className="mt-1 text-label text-on-surface-variant">
-            Sequência: <span className="font-medium">1000-1050</span> ou <span className="font-medium">1000 a 1050</span>; lista:{' '}
-            <span className="font-medium">1000, 1003, 1010-1015</span>
-          </p>
+          {aba !== 'refaturamento' && (
+            <p className="mt-1 text-label text-on-surface-variant">
+              Sequência: <span className="font-medium">1000-1050</span> ou <span className="font-medium">1000 a 1050</span>; lista:{' '}
+              <span className="font-medium">1000, 1003, 1010-1015</span>
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-label text-on-surface-variant">{rotuloData}</label>
@@ -253,8 +258,10 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
   let entradas: NotaEntrada[] = [];
   let naoLancadas: NotaNaoLancada[] = [];
   let comXml = new Set<string>();
+  let refat: ResultadoRefaturamento = { itens: [], progresso: null };
   if (!erro) {
     try {
+      if (aba === 'refaturamento') refat = await buscarRefaturamentos(f);
       if (aba === 'emitidas') emitidas = await buscarEmitidas(f);
       if (aba === 'entradas') entradas = await buscarEntradas(f);
       if (aba === 'naolancadas') naoLancadas = await buscarNaoLancadas(f);
@@ -272,6 +279,8 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
       <Filtro aba={aba} f={f} empresas={empresas} />
       {erro ? (
         <Card className="p-6 text-body-sm text-error">{erro}</Card>
+      ) : aba === 'refaturamento' ? (
+        <Refaturamentos r={refat} f={f} empresa={empresa} />
       ) : aba === 'emitidas' ? (
         <>
           <Kpis
@@ -415,6 +424,123 @@ async function Lista({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map
           </Card>
         </>
       )}
+    </>
+  );
+}
+
+const Selo = ({ s }: { s: NotaEmitida['situacao'] }) => (
+  <span className={`whitespace-nowrap rounded-sm px-2 py-0.5 text-label font-medium ${SITUACAO[s].cor}`}>{SITUACAO[s].rotulo}</span>
+);
+
+/** Notas refaturadas: a nota original (citada no texto da nova) e a nota nova, lado a lado. */
+function Refaturamentos({ r, f, empresa }: { r: ResultadoRefaturamento; f: Filtros; empresa: (id: string) => string }) {
+  const itens = r.itens;
+  const valorNovas = itens.filter((i) => i.nova.situacao === 'autorizada').reduce((s, i) => s + i.nova.valor, 0);
+  const semOriginal = itens.filter((i) => !i.originais.length).length;
+  const periodo = f.de || f.ate || f.busca ? descricao(f) : 'desde jan/2025';
+  return (
+    <>
+      {r.progresso !== null && (
+        <Card className="mb-4 border-amber-300 p-4 text-body-sm text-amber-800">
+          Montando o índice de refaturamentos pela primeira vez ({r.progresso}% lido). Atualize a página em alguns segundos para ver
+          o restante; depois disso a consulta fica rápida.
+        </Card>
+      )}
+      <Card className="mb-4 p-4 text-body-sm text-on-surface-variant">
+        Notas emitidas com &quot;REFATURAMENTO REFERENTE A NF …&quot; nas informações complementares. A nota original é a de mesmo
+        número na mesma empresa (ou do mesmo cliente), emitida antes da nova.
+      </Card>
+      <Kpis
+        itens={[
+          { t: 'Refaturamentos', v: String(itens.length), d: periodo },
+          { t: 'Valor refaturado', v: formatCurrency(valorNovas), c: 'text-green-700', d: 'notas novas autorizadas' },
+          {
+            t: 'Original cancelada',
+            v: String(itens.filter((i) => i.originais.some((o) => o.situacao === 'cancelada')).length),
+            c: 'text-error',
+          },
+          { t: 'Sem nota original', v: String(semOriginal), c: semOriginal ? 'text-amber-700' : 'text-on-surface', d: 'nº citado não achado no ERP' },
+        ]}
+      />
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-surface-container-low text-label uppercase text-on-surface-variant">
+              <tr>
+                <th className={th}>Empresa</th>
+                <th className={th}>Cliente</th>
+                <th className={th}>Nota original</th>
+                <th className={th}></th>
+                <th className={th}>Nota nova (refaturada)</th>
+                <th className={`${th} text-right`}>Diferença</th>
+                <th className={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.slice(0, LIMITE_TELA).map(({ nova, originais, refs, texto }) => {
+                const valorOriginal = originais.reduce((s, o) => s + o.valor, 0);
+                const dif = originais.length ? nova.valor - valorOriginal : null;
+                return (
+                  <tr key={nova.id} className="border-t border-border-muted align-top">
+                    <td className={`${td} text-on-surface-variant`}>{empresa(nova.empresaId)}</td>
+                    <td className={td}>
+                      {nova.destinatario}
+                      <div className="text-label text-on-surface-variant">
+                        {nova.documento}
+                        {nova.uf ? ` · ${nova.uf}` : ''}
+                      </div>
+                    </td>
+                    <td className={td}>
+                      {originais.length ? (
+                        originais.map((o) => (
+                          <div key={o.id} className="mb-1">
+                            <Link
+                              href={filtrosParaUrl({ ...f, de: '', ate: '', busca: o.numero, empresa: o.empresaId }, { aba: 'emitidas' })}
+                              className="font-medium text-primary hover:underline"
+                              title="Abrir a nota original em Emitidas"
+                            >
+                              NF {o.numero}
+                            </Link>{' '}
+                            <span className="text-on-surface-variant">· {br(o.emissao)}</span>
+                            <div className="text-label text-on-surface-variant">
+                              {o.natureza} · {formatCurrency(o.valor)}
+                            </div>
+                            <Selo s={o.situacao} />
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-amber-800" title={texto}>
+                          {refs.length ? `NF ${refs.join(', ')} não achada` : 'Nº não informado no texto'}
+                        </span>
+                      )}
+                    </td>
+                    <td className={`${td} text-on-surface-variant`}>→</td>
+                    <td className={td}>
+                      <span className="font-medium">NF {nova.numero}</span> <span className="text-on-surface-variant">· {br(nova.emissao)}</span>
+                      <div className="text-label text-on-surface-variant">
+                        {nova.natureza} · {formatCurrency(nova.valor)}
+                      </div>
+                      <Selo s={nova.situacao} />
+                      <div className="mt-1 max-w-80 truncate text-label text-on-surface-variant" title={texto}>
+                        {texto}
+                      </div>
+                    </td>
+                    <td
+                      className={`${td} whitespace-nowrap text-right font-medium ${
+                        dif === null || Math.abs(dif) < 0.01 ? 'text-on-surface-variant' : dif > 0 ? 'text-green-700' : 'text-error'
+                      }`}
+                    >
+                      {dif === null ? '—' : Math.abs(dif) < 0.01 ? 'igual' : `${dif > 0 ? '+' : ''}${formatCurrency(dif)}`}
+                    </td>
+                    <td className={td}>{nova.chave && <Baixar chave={nova.chave} />}</td>
+                  </tr>
+                );
+              })}
+              {itens.length === 0 && r.progresso === null && <Vazio cols={7} texto="Nenhum refaturamento encontrado com esses filtros." />}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </>
   );
 }

@@ -14,12 +14,13 @@ import { getPool } from '@/lib/sqlserver';
  * - Nome das empresas do grupo: cfgEmpresas.
  */
 
-export type Aba = 'emitidas' | 'entradas' | 'chave' | 'naolancadas';
+export type Aba = 'emitidas' | 'entradas' | 'chave' | 'naolancadas' | 'refaturamento';
 export const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'emitidas', rotulo: 'Emitidas' },
   { id: 'entradas', rotulo: 'Entradas' },
   { id: 'chave', rotulo: 'Consulta por chave' },
   { id: 'naolancadas', rotulo: 'Não lançadas' },
+  { id: 'refaturamento', rotulo: 'Refaturamento' },
 ];
 
 /** Linhas mostradas na tela. */
