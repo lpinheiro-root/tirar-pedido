@@ -71,7 +71,13 @@ function estilo(c: ExcelJS.Cell, opts: { fonte?: Partial<ExcelJS.Font>; borda?: 
 }
 
 /** bloco de uma semana a partir da linha r0 (cabeçalho em r0, DATA/VALOR em r0+1, dias em r0+2..r0+10, TOTAL em r0+12) */
-function escreverSemana(ws: ExcelJS.Worksheet, r0: number, segunda: string, porCat: Map<string, ValoresDoDia>) {
+function escreverSemana(
+  ws: ExcelJS.Worksheet,
+  r0: number,
+  segunda: string,
+  porCat: Map<string, ValoresDoDia>,
+  periodo: { de: string; ate: string }
+) {
   for (const col of COLUNAS) {
     ws.mergeCells(r0, col.data, r0, col.valor);
     const cab = ws.getCell(r0, col.data);
@@ -94,6 +100,15 @@ function escreverSemana(ws: ExcelJS.Worksheet, r0: number, segunda: string, porC
     const util = somarDias(segunda, i);
     // dias que caem nesta linha: o próprio dia útil e, na segunda, o sábado e o domingo anteriores
     const dias = i === 0 ? [somarDias(util, -2), somarDias(util, -1), util] : [util];
+    // dia fora do período consultado (semana começa antes ou termina depois): linha em branco
+    if (util < diaUtil(periodo.de) || util > diaUtil(periodo.ate)) {
+      for (const col of COLUNAS) {
+        estilo(ws.getCell(r, col.data), { fonte: NEGRITO, borda: { top: fina, left: fina, right: fina } });
+        estilo(ws.getCell(r, col.valor), { borda: BORDA, numFmt: MOEDA });
+      }
+      estilo(ws.getCell(r, COL_TOTAL), { fonte: NEGRITO, borda: BORDA, numFmt: MOEDA });
+      continue;
+    }
     for (const col of COLUNAS) {
       const valores = porCat.get(col.cat)!;
       const comValor = dias.filter((d) => (valores.get(d) ?? 0) > 0.004);
@@ -151,7 +166,11 @@ export async function planilhaEmAberto(titulos: TituloCP[], de: string, ate: str
 
   for (let i = 0; i < semanas.length; i += 2) {
     const par = semanas.slice(i, i + 2);
-    const nome = `${br(par[0])} a ${br(somarDias(par[par.length - 1], 4))}`;
+    // nome da aba limitado ao período consultado (a 1ª semana pode começar antes, a última terminar depois)
+    const inicio = par[0] < diaUtil(de) ? diaUtil(de) : par[0];
+    const fimSemana = somarDias(par[par.length - 1], 4);
+    const fim = fimSemana > diaUtil(ate) ? diaUtil(ate) : fimSemana;
+    const nome = `${br(inicio)} a ${br(fim)}`;
     const ws = wb.addWorksheet(nome);
     [17.85546875, 18, undefined, 20.7109375, 18, undefined, 26.5703125, 16.42578125, undefined, 18].forEach((w, c) => {
       if (w) ws.getColumn(c + 1).width = w;
@@ -162,8 +181,8 @@ export async function planilhaEmAberto(titulos: TituloCP[], de: string, ate: str
     titulo.value = 'VALORES EM ABERTO';
     estilo(titulo, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, al: { horizontal: 'center' } });
 
-    const totais: number[] = [escreverSemana(ws, 2, par[0], porCat)];
-    if (par[1]) totais.push(escreverSemana(ws, 17, par[1], porCat));
+    const totais: number[] = [escreverSemana(ws, 2, par[0], porCat, { de, ate })];
+    if (par[1]) totais.push(escreverSemana(ws, 17, par[1], porCat, { de, ate }));
 
     // total das duas semanas, por coluna (linha 32, como na planilha)
     if (totais.length === 2) {

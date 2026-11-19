@@ -148,12 +148,14 @@ export default async function ContasPagarPage({
           >
             Consultar
           </button>
-          <a
-            href={`/api/contas-pagar/exportar${filtrosParaUrl(f)}`}
+          {/* envia o formulário para a exportação: vale o que está na tela, mesmo sem clicar em Consultar */}
+          <button
+            type="submit"
+            formAction="/api/contas-pagar/exportar"
             className="ml-auto inline-flex h-9 items-center gap-2 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
           >
             <IconDownload width={16} height={16} /> Exportar Excel
-          </a>
+          </button>
         </form>
       </Card>
 
