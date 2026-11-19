@@ -122,26 +122,155 @@ function Barra({ valor, max, cor = 'bg-primary' }: { valor: number; max: number;
   );
 }
 
+/** Detalhe que abre embaixo da linha do ranking: números do item, quebra pela outra dimensão, mês a mês e últimas operações. */
+function Detalhe({
+  ops,
+  s,
+  outraChave,
+  outroRotulo,
+  filtrado,
+  onFiltrar,
+}: {
+  ops: Operacao[];
+  s: Soma;
+  outraChave: (o: Operacao) => string;
+  outroRotulo: string;
+  filtrado: boolean;
+  onFiltrar: () => void;
+}) {
+  const porOutra = [...agrupar(ops, outraChave).entries()].sort((a, b) => b[1].bruto - a[1].bruto);
+  const meses = [...agrupar(ops, (o) => o.data.slice(0, 7)).entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 12);
+  const maxMes = Math.max(0, ...meses.map(([, m]) => m.bruto));
+  const datas = ops.map((o) => o.data).sort();
+  const nDias = new Set(datas).size;
+  const ultimas = [...ops].sort((a, b) => b.data.localeCompare(a.data) || a.id - b.id).slice(0, 8);
+  const custos = ops.filter((o) => o.bruto > 0).map((o) => o.despesas / o.bruto);
+
+  const numeros = [
+    ['Operações', `${s.qtd} em ${nDias} dias`],
+    ['Primeira / última', `${br(datas[0])} · ${br(datas[datas.length - 1])}`],
+    ['Antecipado', moeda(s.bruto)],
+    ['Média por operação', s.qtd ? moeda(s.bruto / s.qtd) : '—'],
+    ['Recompras', s.recompras ? `${moeda(s.recompras)} (${pct(s.recompras / s.bruto)})` : '—'],
+    ['Desconto', s.desconto + s.outros ? moeda(s.desconto + s.outros) : '—'],
+    ['Custo (despesas)', `${moeda(s.despesas)} (${s.bruto ? pct(s.despesas / s.bruto) : '—'})`],
+    ['Custo menor / maior', custos.length ? `${pct(Math.min(...custos))} · ${pct(Math.max(...custos))}` : '—'],
+    ['Líquido recebido', moeda(s.liquido)],
+  ];
+
+  return (
+    <div className="space-y-4 bg-surface-container-low px-4 py-4">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+        {numeros.map(([t, v]) => (
+          <div key={t}>
+            <p className="text-label uppercase text-on-surface-variant">{t}</p>
+            <p className="tabular-nums text-on-surface">{v}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div>
+          <p className="mb-1 text-label font-medium uppercase text-on-surface-variant">Por {outroRotulo}</p>
+          <table className="w-full text-body-sm">
+            <tbody>
+              {porOutra.map(([nome, o]) => (
+                <tr key={nome} className="border-t border-border-muted">
+                  <td className="py-1 pr-2 text-on-surface">{nome}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{curta(o.bruto)}</td>
+                  <td className="py-1 text-right tabular-nums text-on-surface-variant">{o.bruto ? pct(o.despesas / o.bruto) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <p className="mb-1 text-label font-medium uppercase text-on-surface-variant">Últimos meses</p>
+          <table className="w-full text-body-sm">
+            <tbody>
+              {meses.map(([mes, m]) => (
+                <tr key={mes} className="border-t border-border-muted">
+                  <td className="w-14 py-1 pr-2 capitalize text-on-surface">{nomeMes(mes)}</td>
+                  <td className="py-1 pr-2">
+                    <Barra valor={m.bruto} max={maxMes} />
+                  </td>
+                  <td className="w-24 py-1 pr-2 text-right tabular-nums">{curta(m.bruto)}</td>
+                  <td className="w-16 py-1 text-right tabular-nums text-on-surface-variant">{m.bruto ? pct(m.despesas / m.bruto) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1 text-label font-medium uppercase text-on-surface-variant">Últimas operações</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-body-sm">
+            <thead>
+              <tr className="text-left text-label text-on-surface-variant">
+                <th className="py-1 pr-2 font-medium">Dia</th>
+                <th className="py-1 pr-2 font-medium">Na planilha</th>
+                <th className="py-1 pr-2 text-right font-medium">Bruto</th>
+                <th className="py-1 pr-2 text-right font-medium">Recompra</th>
+                <th className="py-1 pr-2 text-right font-medium">Custo</th>
+                <th className="py-1 text-right font-medium">Líquido</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ultimas.map((o) => (
+                <tr key={o.id} className="border-t border-border-muted">
+                  <td className="py-1 pr-2">{br(o.data)}</td>
+                  <td className="py-1 pr-2 text-on-surface-variant">{o.nome_original}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{moeda(o.bruto)}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{o.recompras ? moeda(o.recompras) : '—'}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">
+                    {moeda(o.despesas)}
+                    {o.bruto ? <span className="ml-1 text-label text-on-surface-variant">({pct(o.despesas / o.bruto)})</span> : null}
+                  </td>
+                  <td className="py-1 text-right tabular-nums">{moeda(o.liquido)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Button type="button" variant="secondary" size="sm" onClick={onFiltrar}>
+        {filtrado ? 'Tirar o filtro do painel' : 'Filtrar o painel inteiro por este'}
+      </Button>
+    </div>
+  );
+}
+
 function Ranking({
   titulo,
-  grupos,
-  total,
+  ops,
+  chave,
+  outraChave,
+  outroRotulo,
   selecionado,
   onEscolher,
 }: {
   titulo: string;
-  grupos: Map<string, Soma>;
-  total: number;
+  ops: Operacao[];
+  chave: (o: Operacao) => string;
+  outraChave: (o: Operacao) => string;
+  outroRotulo: string;
   selecionado: string;
   onEscolher: (nome: string) => void;
 }) {
+  const [aberto, setAberto] = useState<string | null>(null);
+  const grupos = useMemo(() => agrupar(ops, chave), [ops, chave]);
   const linhas = [...grupos.entries()].sort((a, b) => b[1].bruto - a[1].bruto);
   const max = linhas[0]?.[1].bruto ?? 0;
+  // participação sobre o total do próprio ranking (antes dava 121% com outro filtro ligado)
+  const total = linhas.reduce((t, [, s]) => t + s.bruto, 0);
   return (
     <Card>
       <div className="border-b border-border-muted px-4 py-3">
         <p className="text-h2 text-on-surface">{titulo}</p>
-        <p className="text-label text-on-surface-variant">Clique numa linha para filtrar o painel.</p>
+        <p className="text-label text-on-surface-variant">Clique numa linha para ver os detalhes.</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-body-sm">
@@ -157,12 +286,13 @@ function Ranking({
           </thead>
           <tbody>
             {linhas.map(([nome, s]) => (
+              <Fragment key={nome}>
               <tr
-                key={nome}
-                onClick={() => onEscolher(selecionado === nome ? '' : nome)}
-                className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${selecionado === nome ? 'bg-primary/10' : ''}`}
+                onClick={() => setAberto(aberto === nome ? null : nome)}
+                className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${aberto === nome || selecionado === nome ? 'bg-primary/10' : ''}`}
               >
                 <td className="px-4 py-2 font-medium text-on-surface">
+                  <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === nome ? '▾' : '▸'}</span>
                   {nome}
                   <span className="ml-1 text-label text-on-surface-variant">({s.qtd})</span>
                 </td>
@@ -179,6 +309,21 @@ function Ranking({
                 <td className="px-4 py-2 text-right tabular-nums font-medium">{s.bruto ? pct(s.despesas / s.bruto) : '—'}</td>
                 <td className="px-4 py-2 text-right tabular-nums">{curta(s.liquido)}</td>
               </tr>
+              {aberto === nome && (
+                <tr>
+                  <td colSpan={6} className="border-t border-border-muted p-0">
+                    <Detalhe
+                      ops={ops.filter((o) => chave(o) === nome)}
+                      s={s}
+                      outraChave={outraChave}
+                      outroRotulo={outroRotulo}
+                      filtrado={selecionado === nome}
+                      onFiltrar={() => onEscolher(selecionado === nome ? '' : nome)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -186,6 +331,9 @@ function Ranking({
     </Card>
   );
 }
+
+const porFidcChave = (o: Operacao) => o.fidc;
+const porEmpresaChave = (o: Operacao) => o.empresa;
 
 function Importar({ ultima }: { ultima: Importacao | null }) {
   const router = useRouter();
@@ -293,8 +441,8 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
   const total = useMemo(() => filtradas.reduce(somar, vazia()), [filtradas]);
   const dias = useMemo(() => agrupar(filtradas, (o) => o.data), [filtradas]);
   // os rankings respeitam o outro filtro (por FIDC filtra empresa e vice-versa)
-  const porFidc = useMemo(() => agrupar(noPeriodo.filter((o) => !empresa || o.empresa === empresa), (o) => o.fidc), [noPeriodo, empresa]);
-  const porEmpresa = useMemo(() => agrupar(noPeriodo.filter((o) => !fidc || o.fidc === fidc), (o) => o.empresa), [noPeriodo, fidc]);
+  const opsFidc = useMemo(() => noPeriodo.filter((o) => !empresa || o.empresa === empresa), [noPeriodo, empresa]);
+  const opsEmpresa = useMemo(() => noPeriodo.filter((o) => !fidc || o.fidc === fidc), [noPeriodo, fidc]);
   const porMes = useMemo(
     () => [...agrupar(filtradas, (o) => o.data.slice(0, 7)).entries()].sort((a, b) => b[0].localeCompare(a[0])),
     [filtradas]
@@ -383,8 +531,24 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Ranking titulo="Por FIDC" grupos={porFidc} total={total.bruto} selecionado={fidc} onEscolher={setFidc} />
-            <Ranking titulo="Por empresa" grupos={porEmpresa} total={total.bruto} selecionado={empresa} onEscolher={setEmpresa} />
+            <Ranking
+              titulo="Por FIDC"
+              ops={opsFidc}
+              chave={porFidcChave}
+              outraChave={porEmpresaChave}
+              outroRotulo="empresa"
+              selecionado={fidc}
+              onEscolher={setFidc}
+            />
+            <Ranking
+              titulo="Por empresa"
+              ops={opsEmpresa}
+              chave={porEmpresaChave}
+              outraChave={porFidcChave}
+              outroRotulo="FIDC"
+              selecionado={empresa}
+              onEscolher={setEmpresa}
+            />
           </div>
 
           <Card>
