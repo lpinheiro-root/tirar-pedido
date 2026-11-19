@@ -406,7 +406,7 @@ function FidcPorMes({ ops }: { ops: Operacao[] }) {
   const maxCelula = Math.max(0, ...[...celulas.values()].map((s) => s.bruto));
   const fundo = (s: Soma | undefined) => {
     if (!s || metrica !== 'bruto' || !maxCelula) return undefined;
-    return { backgroundColor: `rgba(99, 14, 212, ${(0.04 + (s.bruto / maxCelula) * 0.22).toFixed(3)})` };
+    return { backgroundColor: `rgba(37, 99, 235,${(0.04 + (s.bruto / maxCelula) * 0.22).toFixed(3)})` };
   };
 
   return (
