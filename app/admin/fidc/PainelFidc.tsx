@@ -243,6 +243,17 @@ function Detalhe({
   );
 }
 
+type Ordem = 'bruto' | 'custo_pct' | 'custo' | 'recompras' | 'liquido' | 'qtd';
+const custoPct = (s: Soma) => (s.bruto ? s.despesas / s.bruto : Infinity);
+const ORDENS: { id: Ordem; rotulo: string; comparar: (a: Soma, b: Soma) => number }[] = [
+  { id: 'bruto', rotulo: 'Mais antecipado', comparar: (a, b) => b.bruto - a.bruto },
+  { id: 'custo_pct', rotulo: 'Custo % mais barato', comparar: (a, b) => custoPct(a) - custoPct(b) || b.bruto - a.bruto },
+  { id: 'custo', rotulo: 'Maior custo em R$', comparar: (a, b) => b.despesas - a.despesas },
+  { id: 'recompras', rotulo: 'Mais recompras', comparar: (a, b) => b.recompras - a.recompras || b.bruto - a.bruto },
+  { id: 'liquido', rotulo: 'Mais líquido', comparar: (a, b) => b.liquido - a.liquido },
+  { id: 'qtd', rotulo: 'Mais operações', comparar: (a, b) => b.qtd - a.qtd || b.bruto - a.bruto },
+];
+
 function Ranking({
   titulo,
   ops,
@@ -261,21 +272,40 @@ function Ranking({
   onEscolher: (nome: string) => void;
 }) {
   const [aberto, setAberto] = useState<string | null>(null);
+  const [ordem, setOrdem] = useState<Ordem>('bruto');
   const grupos = useMemo(() => agrupar(ops, chave), [ops, chave]);
-  const linhas = [...grupos.entries()].sort((a, b) => b[1].bruto - a[1].bruto);
-  const max = linhas[0]?.[1].bruto ?? 0;
+  const criterio = ORDENS.find((o) => o.id === ordem)!;
+  const linhas = [...grupos.entries()].sort((a, b) => criterio.comparar(a[1], b[1]));
+  const max = Math.max(0, ...linhas.map(([, s]) => s.bruto));
   // participação sobre o total do próprio ranking (antes dava 121% com outro filtro ligado)
   const total = linhas.reduce((t, [, s]) => t + s.bruto, 0);
   return (
     <Card>
       <div className="border-b border-border-muted px-4 py-3">
         <p className="text-h2 text-on-surface">{titulo}</p>
-        <p className="text-label text-on-surface-variant">Clique numa linha para ver os detalhes.</p>
+        <p className="text-label text-on-surface-variant">Escolha a ordem do ranking. Clique numa linha para ver os detalhes.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {ORDENS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => setOrdem(o.id)}
+              className={`rounded-full border px-3 py-1 text-label font-medium transition-colors ${
+                ordem === o.id
+                  ? 'border-primary bg-primary text-on-primary'
+                  : 'border-border-muted text-on-surface-variant hover:border-primary hover:text-primary'
+              }`}
+            >
+              {o.rotulo}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-body-sm">
           <thead>
             <tr className="text-left text-label uppercase text-on-surface-variant">
+              <th className="w-10 py-2 pl-4 text-center font-medium">#</th>
               <th className="px-4 py-2 font-medium">Nome</th>
               <th className="px-4 py-2 text-right font-medium">Antecipado</th>
               <th className="w-28 px-4 py-2 font-medium">Participação</th>
@@ -285,12 +315,27 @@ function Ranking({
             </tr>
           </thead>
           <tbody>
-            {linhas.map(([nome, s]) => (
+            {linhas.map(([nome, s], i) => (
               <Fragment key={nome}>
               <tr
                 onClick={() => setAberto(aberto === nome ? null : nome)}
                 className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${aberto === nome || selecionado === nome ? 'bg-primary/10' : ''}`}
               >
+                <td className="py-2 pl-4 text-center">
+                  <span
+                    className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-label font-semibold tabular-nums ${
+                      i === 0
+                        ? 'bg-amber-400 text-white'
+                        : i === 1
+                          ? 'bg-slate-400 text-white'
+                          : i === 2
+                            ? 'bg-orange-700/80 text-white'
+                            : 'text-on-surface-variant'
+                    }`}
+                  >
+                    {i + 1}º
+                  </span>
+                </td>
                 <td className="px-4 py-2 font-medium text-on-surface">
                   <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === nome ? '▾' : '▸'}</span>
                   {nome}
@@ -311,7 +356,7 @@ function Ranking({
               </tr>
               {aberto === nome && (
                 <tr>
-                  <td colSpan={6} className="border-t border-border-muted p-0">
+                  <td colSpan={7} className="border-t border-border-muted p-0">
                     <Detalhe
                       ops={ops.filter((o) => chave(o) === nome)}
                       s={s}
