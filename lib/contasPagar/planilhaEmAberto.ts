@@ -3,7 +3,8 @@ import { categoria, type TituloCP } from './dados';
 
 /**
  * Excel no formato da planilha "materia prima e embalagem-em aberto" do
- * financeiro: cada aba tem duas semanas (segunda a sexta), com Embalagem,
+ * financeiro, numa aba só com o período inteiro (mesmo atravessando meses):
+ * as semanas (segunda a sexta) uma embaixo da outra, com Embalagem,
  * Matéria-prima e Frete lado a lado (DATA / VALOR) e o Total geral.
  * Sábado e domingo entram na linha da segunda seguinte ("21, 22 e 23/10/2023").
  * Os valores são o valor original dos títulos em aberto de cada dia de
@@ -38,6 +39,7 @@ const diaSemana = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const diaUtil = (iso: string) => (diaSemana(iso) === 6 ? somarDias(iso, 2) : diaSemana(iso) === 0 ? somarDias(iso, 1) : iso);
 const segundaDa = (iso: string) => somarDias(iso, -((diaSemana(iso) + 6) % 7));
 const dataExcel = (iso: string) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)));
+const br = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 /** "21, 22 e 23/10/2023" (mesmo mês) ou "30/09, 01 e 02/10/2023" */
 function rotuloDias(dias: string[]): string {
@@ -70,14 +72,15 @@ function estilo(c: ExcelJS.Cell, opts: { fonte?: Partial<ExcelJS.Font>; borda?: 
   if (opts.al) c.alignment = opts.al;
 }
 
-/** bloco de uma semana a partir da linha r0 (cabeçalho em r0, DATA/VALOR em r0+1, dias em r0+2..r0+10, TOTAL em r0+12) */
-function escreverSemana(
-  ws: ExcelJS.Worksheet,
-  r0: number,
-  segunda: string,
-  porCat: Map<string, ValoresDoDia>,
-  periodo: { de: string; ate: string }
-) {
+// o ExcelJS não guarda o resultado zero da fórmula: sem resultado vale 0
+const resultado = (c: ExcelJS.Cell) => Number((c.value as { result?: number } | null)?.result ?? 0);
+
+/**
+ * Bloco de uma semana a partir da linha r0: cabeçalho em r0, DATA/VALOR em r0+1 e
+ * uma linha por dia útil do período (com uma linha de respiro entre os dias;
+ * depois da segunda, que junta o fim de semana, a faixa cinza). Devolve a linha do TOTAL.
+ */
+function escreverSemana(ws: ExcelJS.Worksheet, r0: number, diasUteis: string[], porCat: Map<string, ValoresDoDia>) {
   for (const col of COLUNAS) {
     ws.mergeCells(r0, col.data, r0, col.valor);
     const cab = ws.getCell(r0, col.data);
@@ -91,31 +94,21 @@ function escreverSemana(
   ws.mergeCells(r0, COL_TOTAL, r0 + 1, COL_TOTAL);
   const tg = ws.getCell(r0, COL_TOTAL);
   tg.value = 'TOTAL GERAL';
-  estilo(tg, { fonte: NEGRITO, fill: AMARELO, borda: { top: fina, left: fina, right: fina, bottom: fina }, al: { horizontal: 'center', vertical: 'middle' } });
+  estilo(tg, { fonte: NEGRITO, fill: AMARELO, borda: BORDA, al: { horizontal: 'center', vertical: 'middle' } });
 
   const linhasDias: number[] = [];
-  for (let i = 0; i < 5; i++) {
+  diasUteis.forEach((util, i) => {
     const r = r0 + 2 + i * 2;
     linhasDias.push(r);
-    const util = somarDias(segunda, i);
     // dias que caem nesta linha: o próprio dia útil e, na segunda, o sábado e o domingo anteriores
-    const dias = i === 0 ? [somarDias(util, -2), somarDias(util, -1), util] : [util];
-    // dia fora do período consultado (semana começa antes ou termina depois): linha em branco
-    if (util < diaUtil(periodo.de) || util > diaUtil(periodo.ate)) {
-      for (const col of COLUNAS) {
-        estilo(ws.getCell(r, col.data), { fonte: NEGRITO, borda: { top: fina, left: fina, right: fina } });
-        estilo(ws.getCell(r, col.valor), { borda: BORDA, numFmt: MOEDA });
-      }
-      estilo(ws.getCell(r, COL_TOTAL), { fonte: NEGRITO, borda: BORDA, numFmt: MOEDA });
-      continue;
-    }
+    const dias = diaSemana(util) === 1 ? [somarDias(util, -2), somarDias(util, -1), util] : [util];
     for (const col of COLUNAS) {
       const valores = porCat.get(col.cat)!;
       const comValor = dias.filter((d) => (valores.get(d) ?? 0) > 0.004);
       const total = comValor.reduce((s, d) => s + (valores.get(d) ?? 0), 0);
       const cData = ws.getCell(r, col.data);
       cData.value = comValor.length === 0 || (comValor.length === 1 && comValor[0] === util) ? dataExcel(util) : rotuloDias(comValor);
-      estilo(cData, { fonte: NEGRITO, borda: { top: fina, left: fina, right: fina }, numFmt: 'mm-dd-yy', al: { horizontal: 'center', vertical: 'middle' } });
+      estilo(cData, { fonte: NEGRITO, borda: { top: fina, left: fina, right: fina }, numFmt: 'dd/mm/yyyy', al: { horizontal: 'center', vertical: 'middle' } });
       const cValor = ws.getCell(r, col.valor);
       cValor.value = Math.round(total * 100) / 100;
       estilo(cValor, { borda: BORDA, numFmt: MOEDA });
@@ -124,15 +117,17 @@ function escreverSemana(
     const cTotal = ws.getCell(r, COL_TOTAL);
     cTotal.value = { formula: COLUNAS.map((c) => ws.getCell(r, c.valor).address).join('+'), result: Math.round(soma * 100) / 100 };
     estilo(cTotal, { fonte: NEGRITO, borda: BORDA, numFmt: MOEDA });
-  }
-  // faixa cinza depois da linha da segunda (que junta o fim de semana)
-  for (const col of COLUNAS) {
-    ws.mergeCells(r0 + 3, col.data, r0 + 3, col.valor);
-    estilo(ws.getCell(r0 + 3, col.data), { fonte: NEGRITO, fill: CINZA, borda: { top: fina, left: fina, bottom: fina }, al: { horizontal: 'center' } });
-    estilo(ws.getCell(r0 + 3, col.valor), { fonte: NEGRITO, fill: CINZA, borda: { top: fina, bottom: fina } });
-  }
+    // faixa cinza depois da linha da segunda (que junta o fim de semana)
+    if (diaSemana(util) === 1 && i < diasUteis.length - 1) {
+      for (const col of COLUNAS) {
+        ws.mergeCells(r + 1, col.data, r + 1, col.valor);
+        estilo(ws.getCell(r + 1, col.data), { fonte: NEGRITO, fill: CINZA, borda: { top: fina, left: fina, bottom: fina } });
+        estilo(ws.getCell(r + 1, col.valor), { fonte: NEGRITO, fill: CINZA, borda: { top: fina, bottom: fina } });
+      }
+    }
+  });
 
-  const rTotal = r0 + 12;
+  const rTotal = r0 + 2 + diasUteis.length * 2;
   for (const col of COLUNAS) {
     const t = ws.getCell(rTotal, col.data);
     t.value = 'TOTAL';
@@ -143,14 +138,12 @@ function escreverSemana(
     v.value = { formula: linhasDias.map((r) => `${letra}${r}`).join('+'), result: Math.round(soma * 100) / 100 };
     estilo(v, { fonte: NEGRITO, borda: BORDA, numFmt: MOEDA });
   }
-  const somaGeral = COLUNAS.reduce((s, col) => s + Number((ws.getCell(rTotal, col.valor).value as { result: number }).result), 0);
+  const somaGeral = COLUNAS.reduce((s, col) => s + resultado(ws.getCell(rTotal, col.valor)), 0);
   const tgv = ws.getCell(rTotal, COL_TOTAL);
   tgv.value = { formula: COLUNAS.map((c) => ws.getCell(rTotal, c.valor).address).join('+'), result: Math.round(somaGeral * 100) / 100 };
   estilo(tgv, { fonte: NEGRITO, borda: BORDA, numFmt: MOEDA });
   return rTotal;
 }
-
-const br = (iso: string) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}`;
 
 export async function planilhaEmAberto(titulos: TituloCP[], de: string, ate: string): Promise<ExcelJS.Workbook> {
   const ExcelJSMod = (await import('exceljs')).default;
@@ -160,41 +153,50 @@ export async function planilhaEmAberto(titulos: TituloCP[], de: string, ate: str
   wb.calcProperties = { fullCalcOnLoad: true };
   const porCat = agrupar(titulos);
 
-  // semanas (segunda) do período; fim de semana conta na segunda seguinte
-  const semanas: string[] = [];
-  for (let s = segundaDa(diaUtil(de)); s <= segundaDa(diaUtil(ate)); s = somarDias(s, 7)) semanas.push(s);
-
-  for (let i = 0; i < semanas.length; i += 2) {
-    const par = semanas.slice(i, i + 2);
-    // nome da aba limitado ao período consultado (a 1ª semana pode começar antes, a última terminar depois)
-    const inicio = par[0] < diaUtil(de) ? diaUtil(de) : par[0];
-    const fimSemana = somarDias(par[par.length - 1], 4);
-    const fim = fimSemana > diaUtil(ate) ? diaUtil(ate) : fimSemana;
-    const nome = `${br(inicio)} a ${br(fim)}`;
-    const ws = wb.addWorksheet(nome);
-    [17.85546875, 18, undefined, 20.7109375, 18, undefined, 26.5703125, 16.42578125, undefined, 18].forEach((w, c) => {
-      if (w) ws.getColumn(c + 1).width = w;
-    });
-
-    ws.mergeCells(1, 1, 1, COL_TOTAL);
-    const titulo = ws.getCell(1, 1);
-    titulo.value = 'VALORES EM ABERTO';
-    estilo(titulo, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, al: { horizontal: 'center' } });
-
-    const totais: number[] = [escreverSemana(ws, 2, par[0], porCat, { de, ate })];
-    if (par[1]) totais.push(escreverSemana(ws, 17, par[1], porCat, { de, ate }));
-
-    // total das duas semanas, por coluna (linha 32, como na planilha)
-    if (totais.length === 2) {
-      for (const col of COLUNAS) {
-        const letra = ws.getColumn(col.valor).letter;
-        const soma = totais.reduce((s, r) => s + Number((ws.getCell(r, col.valor).value as { result: number }).result), 0);
-        const c = ws.getCell(32, col.data);
-        c.value = { formula: totais.map((r) => `${letra}${r}`).join('+'), result: Math.round(soma * 100) / 100 };
-        estilo(c, { numFmt: MOEDA });
-      }
-    }
-    for (let r = 1; r <= ws.rowCount; r++) ws.getRow(r).height = 18.75;
+  // dias úteis do período (fim de semana conta na segunda seguinte), agrupados por semana
+  const semanas = new Map<string, string[]>();
+  for (let d = diaUtil(de); d <= diaUtil(ate); d = somarDias(d, 1)) {
+    if (diaSemana(d) === 0 || diaSemana(d) === 6) continue;
+    const s = segundaDa(d);
+    semanas.set(s, [...(semanas.get(s) ?? []), d]);
   }
+
+  const ws = wb.addWorksheet('Valores em aberto');
+  [17.85546875, 18, undefined, 20.7109375, 18, undefined, 26.5703125, 16.42578125, undefined, 18].forEach((w, c) => {
+    if (w) ws.getColumn(c + 1).width = w;
+  });
+
+  ws.mergeCells(1, 1, 1, COL_TOTAL);
+  const titulo = ws.getCell(1, 1);
+  titulo.value = `VALORES EM ABERTO — ${br(de)} a ${br(ate)}`;
+  estilo(titulo, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, al: { horizontal: 'center' } });
+
+  const totais: number[] = [];
+  let r = 2;
+  for (const dias of Array.from(semanas.values())) {
+    const rTotal = escreverSemana(ws, r, dias, porCat);
+    totais.push(rTotal);
+    r = rTotal + 3;
+  }
+
+  // total do período inteiro, por coluna e geral
+  if (totais.length) {
+    for (const col of COLUNAS) {
+      const rot = ws.getCell(r, col.data);
+      rot.value = 'TOTAL PERÍODO';
+      estilo(rot, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, al: { horizontal: 'center', vertical: 'middle' } });
+      const letra = ws.getColumn(col.valor).letter;
+      const soma = totais.reduce((s, t) => s + resultado(ws.getCell(t, col.valor)), 0);
+      const c = ws.getCell(r, col.valor);
+      c.value = { formula: totais.map((t) => `${letra}${t}`).join('+'), result: Math.round(soma * 100) / 100 };
+      estilo(c, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, numFmt: MOEDA });
+    }
+    const somaGeral = COLUNAS.reduce((s, col) => s + resultado(ws.getCell(r, col.valor)), 0);
+    const g = ws.getCell(r, COL_TOTAL);
+    g.value = { formula: COLUNAS.map((c) => ws.getCell(r, c.valor).address).join('+'), result: Math.round(somaGeral * 100) / 100 };
+    estilo(g, { fonte: NEGRITO, fill: LARANJA, borda: BORDA, numFmt: MOEDA });
+  }
+  for (let i = 1; i <= ws.rowCount; i++) ws.getRow(i).height = 18.75;
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
   return wb;
 }
