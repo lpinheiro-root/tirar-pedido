@@ -18,7 +18,7 @@ export default async function FidcPage() {
     operacoes = await buscarTodas<Operacao>((de, ate) =>
       db
         .from('fidc_operacoes')
-        .select('id,data,aba,nome_original,fidc,empresa,bruto,recompras,refaturamento,nota_troca,substituicao,prorrogacao,desconto,despesas,liquido')
+        .select('id,data,aba,nome_original,fidc,empresa,bruto,recompras,refaturamento,nota_troca,substituicao,prorrogacao,desconto,despesas,liquido,bordero_id,origem')
         .order('data', { ascending: false })
         .order('id', { ascending: true })
         .range(de, ate)

@@ -15,7 +15,7 @@ const FIDCS: [string, string[]][] = [
   ['Prévia', ['PREVIA', 'PEVIA']],
   ['Goal', ['GOAL', 'GOA']],
   ['Delta', ['DELTA']],
-  ['Lecca', ['LECCA']],
+  ['Lecca', ['LECCA', 'RIVO']], // no borderô a Lecca aparece como "RIVO FUNDO INVESTIMENTO..."
   ['Guanabara', ['GUANABARA', 'CASAGUANABARA', 'CASASGUANABARA', 'CASASGUABARA', 'CSGUANABARA']],
   ['Braspor', ['BRASPOR', 'BRASPO']],
   ['Lira', ['LIRA']],
@@ -128,6 +128,34 @@ export function normalizarNome(nome: string): { fidc: string; empresa: string; r
     empresa: empresa ?? SEM_EMPRESA,
     reconhecido,
   };
+}
+
+/** Nomes padrão das FIDCs conhecidas (para escolher numa lista). */
+export const FIDCS_CONHECIDAS = FIDCS.map(([padrao]) => padrao);
+/** Nomes padrão das empresas do grupo. */
+export const EMPRESAS_CONHECIDAS = ['Roma', 'Lucerna', 'Verona', 'Biosense', 'Modena', 'Veneza RJ', 'Veneza SP', 'Veneza PE', 'Veneza RS', 'Veneza MG', 'Veneza'];
+
+/**
+ * FIDC pelo nome que vem no borderô ("AMPLIC FUNDO DE INVESTIMEN EM DIREITOS CREDITORIOS",
+ * "CRESCER FIDC MULTISEGMENTOS", "RIVO FUNDO ..."): a primeira palavra que for uma FIDC conhecida.
+ */
+export function fidcDoBordero(nome: string): string | null {
+  const palavras = limpar(nome).split(' ');
+  for (const p of palavras) {
+    const f = fidcDe(p);
+    if (f && p.length >= 4) return f;
+  }
+  return fidcDe(palavras.join(''));
+}
+
+/**
+ * Empresa pelo nome do cedente no borderô. Só as que não têm filial; Veneza depende do CNPJ
+ * (a filial), então volta null e a pessoa escolhe uma vez.
+ */
+export function empresaDoCedente(nome: string): string | null {
+  const s = limpar(nome);
+  for (const [padrao, re] of EMPRESAS.slice(0, 5)) if (re.test(s)) return padrao;
+  return null;
 }
 
 function titulo(s: string) {

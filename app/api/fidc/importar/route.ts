@@ -3,6 +3,7 @@ import { requireFidc } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { lerAbasXlsx } from '@/lib/fidc/lerXlsx';
 import { lerPlanilhaFidc } from '@/lib/fidc/planilha';
+import { vincularBorderos } from '@/lib/fidc/vincular';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,7 +60,8 @@ export async function POST(request: Request) {
     // apaga os dias que vieram na planilha (em blocos, para a URL não ficar enorme)
     for (let i = 0; i < dias.length; i += 100) {
       const bloco = dias.slice(i, i + 100);
-      const a = await db.from('fidc_operacoes').delete().in('data', bloco);
+      // só as linhas da planilha: as que vieram de borderô ficam até a planilha trazer a mesma operação
+      const a = await db.from('fidc_operacoes').delete().in('data', bloco).neq('origem', 'bordero');
       if (a.error) throw new Error(a.error.message);
       const b = await db.from('fidc_faturamentos').delete().in('data_operacao', bloco);
       if (b.error) throw new Error(b.error.message);
@@ -76,6 +78,8 @@ export async function POST(request: Request) {
         .insert(lida.faturamentos.slice(i, i + 500).map((f) => ({ ...f, importacao_id: imp.id })));
       if (error) throw new Error(error.message);
     }
+    // liga os borderôs já importados desses dias às linhas da planilha
+    await vincularBorderos(db, dias);
   } catch (e) {
     return erro(`Falha ao gravar no banco: ${e instanceof Error ? e.message : String(e)}. Importe de novo.`, 500);
   }

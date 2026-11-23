@@ -1,12 +1,15 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { ResultadoBordero } from '@/app/api/fidc/bordero/route';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
 export interface Operacao {
   id: number;
+  bordero_id: number | null;
+  origem: string;
   data: string;
   aba: string;
   nome_original: string;
@@ -91,7 +94,15 @@ interface Soma {
   liquido: number;
   qtd: number;
 }
-const vazia = (): Soma => ({ bruto: 0, recompras: 0, desconto: 0, despesas: 0, outros: 0, liquido: 0, qtd: 0 });
+const vazia = (): Soma => ({
+  bruto: 0,
+  recompras: 0,
+  desconto: 0,
+  despesas: 0,
+  outros: 0,
+  liquido: 0,
+  qtd: 0,
+});
 function somar(s: Soma, o: Operacao) {
   s.bruto += o.bruto;
   s.recompras += o.recompras;
@@ -108,8 +119,7 @@ function agrupar(ops: Operacao[], chave: (o: Operacao) => string) {
   return m;
 }
 
-const seletor =
-  'h-9 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-2 text-body-sm text-on-surface';
+const seletor = 'h-9 rounded-md border border-[#D1D5DB] bg-surface-container-lowest px-2 text-body-sm text-on-surface';
 const campoArquivo =
   'block w-full text-body-sm text-on-surface file:mr-3 file:h-9 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:text-body-sm file:font-medium file:text-primary hover:file:bg-primary/15';
 
@@ -245,13 +255,41 @@ function Detalhe({
 
 type Ordem = 'bruto' | 'custo_pct' | 'custo' | 'recompras' | 'liquido' | 'qtd';
 const custoPct = (s: Soma) => (s.bruto ? s.despesas / s.bruto : Infinity);
-const ORDENS: { id: Ordem; rotulo: string; comparar: (a: Soma, b: Soma) => number }[] = [
-  { id: 'bruto', rotulo: 'Mais antecipado', comparar: (a, b) => b.bruto - a.bruto },
-  { id: 'custo_pct', rotulo: 'Custo % mais barato', comparar: (a, b) => custoPct(a) - custoPct(b) || b.bruto - a.bruto },
-  { id: 'custo', rotulo: 'Maior custo em R$', comparar: (a, b) => b.despesas - a.despesas },
-  { id: 'recompras', rotulo: 'Mais recompras', comparar: (a, b) => b.recompras - a.recompras || b.bruto - a.bruto },
-  { id: 'liquido', rotulo: 'Mais líquido', comparar: (a, b) => b.liquido - a.liquido },
-  { id: 'qtd', rotulo: 'Mais operações', comparar: (a, b) => b.qtd - a.qtd || b.bruto - a.bruto },
+const ORDENS: {
+  id: Ordem;
+  rotulo: string;
+  comparar: (a: Soma, b: Soma) => number;
+}[] = [
+  {
+    id: 'bruto',
+    rotulo: 'Mais antecipado',
+    comparar: (a, b) => b.bruto - a.bruto,
+  },
+  {
+    id: 'custo_pct',
+    rotulo: 'Custo % mais barato',
+    comparar: (a, b) => custoPct(a) - custoPct(b) || b.bruto - a.bruto,
+  },
+  {
+    id: 'custo',
+    rotulo: 'Maior custo em R$',
+    comparar: (a, b) => b.despesas - a.despesas,
+  },
+  {
+    id: 'recompras',
+    rotulo: 'Mais recompras',
+    comparar: (a, b) => b.recompras - a.recompras || b.bruto - a.bruto,
+  },
+  {
+    id: 'liquido',
+    rotulo: 'Mais líquido',
+    comparar: (a, b) => b.liquido - a.liquido,
+  },
+  {
+    id: 'qtd',
+    rotulo: 'Mais operações',
+    comparar: (a, b) => b.qtd - a.qtd || b.bruto - a.bruto,
+  },
 ];
 
 function Ranking({
@@ -317,57 +355,57 @@ function Ranking({
           <tbody>
             {linhas.map(([nome, s], i) => (
               <Fragment key={nome}>
-              <tr
-                onClick={() => setAberto(aberto === nome ? null : nome)}
-                className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${aberto === nome || selecionado === nome ? 'bg-primary/10' : ''}`}
-              >
-                <td className="py-2 pl-4 text-center">
-                  <span
-                    className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-label font-semibold tabular-nums ${
-                      i === 0
-                        ? 'bg-amber-400 text-white'
-                        : i === 1
-                          ? 'bg-slate-400 text-white'
-                          : i === 2
-                            ? 'bg-orange-700/80 text-white'
-                            : 'text-on-surface-variant'
-                    }`}
-                  >
-                    {i + 1}º
-                  </span>
-                </td>
-                <td className="px-4 py-2 font-medium text-on-surface">
-                  <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === nome ? '▾' : '▸'}</span>
-                  {nome}
-                  <span className="ml-1 text-label text-on-surface-variant">({s.qtd})</span>
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums">{curta(s.bruto)}</td>
-                <td className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <Barra valor={s.bruto} max={max} />
-                    <span className="w-10 text-right text-label tabular-nums text-on-surface-variant">
-                      {total ? Math.round((s.bruto / total) * 100) : 0}%
+                <tr
+                  onClick={() => setAberto(aberto === nome ? null : nome)}
+                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${aberto === nome || selecionado === nome ? 'bg-primary/10' : ''}`}
+                >
+                  <td className="py-2 pl-4 text-center">
+                    <span
+                      className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-label font-semibold tabular-nums ${
+                        i === 0
+                          ? 'bg-amber-400 text-white'
+                          : i === 1
+                            ? 'bg-slate-400 text-white'
+                            : i === 2
+                              ? 'bg-orange-700/80 text-white'
+                              : 'text-on-surface-variant'
+                      }`}
+                    >
+                      {i + 1}º
                     </span>
-                  </div>
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums">{curta(s.despesas)}</td>
-                <td className="px-4 py-2 text-right tabular-nums font-medium">{s.bruto ? pct(s.despesas / s.bruto) : '—'}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{curta(s.liquido)}</td>
-              </tr>
-              {aberto === nome && (
-                <tr>
-                  <td colSpan={7} className="border-t border-border-muted p-0">
-                    <Detalhe
-                      ops={ops.filter((o) => chave(o) === nome)}
-                      s={s}
-                      outraChave={outraChave}
-                      outroRotulo={outroRotulo}
-                      filtrado={selecionado === nome}
-                      onFiltrar={() => onEscolher(selecionado === nome ? '' : nome)}
-                    />
                   </td>
+                  <td className="px-4 py-2 font-medium text-on-surface">
+                    <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === nome ? '▾' : '▸'}</span>
+                    {nome}
+                    <span className="ml-1 text-label text-on-surface-variant">({s.qtd})</span>
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{curta(s.bruto)}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <Barra valor={s.bruto} max={max} />
+                      <span className="w-10 text-right text-label tabular-nums text-on-surface-variant">
+                        {total ? Math.round((s.bruto / total) * 100) : 0}%
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{curta(s.despesas)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-medium">{s.bruto ? pct(s.despesas / s.bruto) : '—'}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{curta(s.liquido)}</td>
                 </tr>
-              )}
+                {aberto === nome && (
+                  <tr>
+                    <td colSpan={7} className="border-t border-border-muted p-0">
+                      <Detalhe
+                        ops={ops.filter((o) => chave(o) === nome)}
+                        s={s}
+                        outraChave={outraChave}
+                        outroRotulo={outroRotulo}
+                        filtrado={selecionado === nome}
+                        onFiltrar={() => onEscolher(selecionado === nome ? '' : nome)}
+                      />
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             ))}
           </tbody>
@@ -406,14 +444,18 @@ function FidcPorMes({ ops }: { ops: Operacao[] }) {
   const maxCelula = Math.max(0, ...[...celulas.values()].map((s) => s.bruto));
   const fundo = (s: Soma | undefined) => {
     if (!s || metrica !== 'bruto' || !maxCelula) return undefined;
-    return { backgroundColor: `rgba(37, 99, 235,${(0.04 + (s.bruto / maxCelula) * 0.22).toFixed(3)})` };
+    return {
+      backgroundColor: `rgba(37, 99, 235,${(0.04 + (s.bruto / maxCelula) * 0.22).toFixed(3)})`,
+    };
   };
 
   return (
     <Card>
       <div className="border-b border-border-muted px-4 py-3">
         <p className="text-h2 text-on-surface">FIDC por mês</p>
-        <p className="text-label text-on-surface-variant">Cada FIDC numa linha e cada mês numa coluna. Role para o lado para ver os meses mais antigos.</p>
+        <p className="text-label text-on-surface-variant">
+          Cada FIDC numa linha e cada mês numa coluna. Role para o lado para ver os meses mais antigos.
+        </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {METRICAS.map((m) => (
             <button
@@ -466,7 +508,11 @@ function FidcPorMes({ ops }: { ops: Operacao[] }) {
                     <td
                       key={m}
                       style={fundo(s)}
-                      title={s ? `${f} · ${nomeMes(m)}: ${moeda(s.bruto)} antecipado, custo ${moeda(s.despesas)} (${pct(s.despesas / (s.bruto || 1))}), ${s.qtd} operações` : undefined}
+                      title={
+                        s
+                          ? `${f} · ${nomeMes(m)}: ${moeda(s.bruto)} antecipado, custo ${moeda(s.despesas)} (${pct(s.despesas / (s.bruto || 1))}), ${s.qtd} operações`
+                          : undefined
+                      }
                       className="whitespace-nowrap border-b border-border-muted px-3 py-1.5 text-right tabular-nums text-on-surface"
                     >
                       {valorMetrica(s, metrica)}
@@ -501,10 +547,281 @@ function FidcPorMes({ ops }: { ops: Operacao[] }) {
 const porFidcChave = (o: Operacao) => o.fidc;
 const porEmpresaChave = (o: Operacao) => o.empresa;
 
+function ImportarBordero() {
+  const router = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [arquivos, setArquivos] = useState<Map<string, File>>(new Map());
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultados, setResultados] = useState<ResultadoBordero[]>([]);
+  const [escolha, setEscolha] = useState<Record<string, { fidc: string; empresa: string }>>({});
+
+  async function mandar(files: File[], extra?: { fidc: string; empresa: string }) {
+    const fd = new FormData();
+    files.forEach((f) => fd.append('arquivos', f));
+    if (extra?.fidc) fd.set('fidc', extra.fidc);
+    if (extra?.empresa) fd.set('empresa', extra.empresa);
+    const r = await fetch('/api/fidc/bordero', { method: 'POST', body: fd });
+    const json = await r.json().catch(() => ({ erro: 'Resposta inválida do servidor.' }));
+    if (!r.ok || json.erro) throw new Error(json.erro ?? 'Não consegui importar.');
+    return json.resultados as ResultadoBordero[];
+  }
+
+  async function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const files = Array.from(input.current?.files ?? []);
+    if (!files.length) return;
+    setEnviando(true);
+    setErro(null);
+    setResultados([]);
+    setArquivos(new Map(files.map((f) => [f.name, f])));
+    try {
+      setResultados(await mandar(files));
+      if (input.current) input.current.value = '';
+      router.refresh();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Falha de conexão com o servidor.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function completar(nome: string) {
+    const f = arquivos.get(nome);
+    if (!f) return;
+    setEnviando(true);
+    try {
+      const [r] = await mandar([f], escolha[nome]);
+      setResultados((atual) => atual.map((x) => (x.arquivo === nome ? r : x)));
+      router.refresh();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Falha de conexão com o servidor.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-border-muted pt-4">
+      <form onSubmit={enviar} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-label text-on-surface-variant">
+            PDF do borderô baixado no Meus Recebíveis (&quot;Borderô Comprimido Analítico&quot;). Pode escolher vários de uma vez. Importar o mesmo
+            borderô de novo só atualiza, não duplica.
+          </label>
+          <input ref={input} type="file" name="arquivos" accept=".pdf,application/pdf" multiple required className={campoArquivo} />
+        </div>
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={enviando}>
+            {enviando ? 'Lendo borderô…' : 'Importar borderô'}
+          </Button>
+          {erro && <p className="text-body-sm text-error">{erro}</p>}
+        </div>
+      </form>
+
+      {resultados.length > 0 && (
+        <ul className="space-y-2">
+          {resultados.map((r) => (
+            <li
+              key={r.arquivo}
+              className={`rounded-md border p-3 text-body-sm ${
+                r.ok
+                  ? 'border-green-200 bg-green-50 text-green-900'
+                  : 'falta' in r
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-red-200 bg-red-50 text-red-900'
+              }`}
+            >
+              <p className="text-label opacity-70">{r.arquivo}</p>
+              {r.ok ? (
+                <>
+                  <p>
+                    ✅ <strong>{r.fidc}</strong> · {r.empresa} · borderô {r.numero} de {br(r.data)} — {moeda(r.bruto)} antecipado, custo{' '}
+                    {moeda(r.despesas)} ({pct(r.bruto ? r.despesas / r.bruto : 0)}), líquido {moeda(r.liquido)} · {r.qtdTitulos} títulos
+                    {r.atualizado ? ' (atualizado)' : ''}
+                  </p>
+                  <p className="text-label">
+                    {r.vinculo === 'planilha'
+                      ? 'Bateu com a operação que já estava no sistema: os títulos foram ligados a ela.'
+                      : 'Ainda não estava no sistema: entrou como operação nova. Quando a planilha desse dia for importada, não duplica.'}
+                  </p>
+                  {r.avisos.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5 text-amber-900">
+                      {r.avisos.map((a) => (
+                        <li key={a}>⚠️ {a}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : 'falta' in r ? (
+                <div className="space-y-2">
+                  <p>
+                    Não reconheci {r.falta.fidc && r.falta.empresa ? 'a FIDC e a empresa' : r.falta.fidc ? 'a FIDC' : 'a empresa'} deste borderô
+                    {r.falta.fidc ? ` (FIDC: "${r.fidcNome}")` : ''}
+                    {r.falta.empresa ? ` (cedente: "${r.cedente}", CNPJ ${r.cnpj || 'não informado'})` : ''}. Escolha abaixo; a empresa fica guardada
+                    para esse CNPJ.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {r.falta.fidc && (
+                      <select
+                        className={seletor}
+                        value={escolha[r.arquivo]?.fidc ?? ''}
+                        onChange={(e) =>
+                          setEscolha({
+                            ...escolha,
+                            [r.arquivo]: { ...(escolha[r.arquivo] ?? { fidc: '', empresa: '' }), fidc: e.target.value },
+                          })
+                        }
+                      >
+                        <option value="">FIDC…</option>
+                        {r.fidcs.map((f) => (
+                          <option key={f}>{f}</option>
+                        ))}
+                      </select>
+                    )}
+                    {r.falta.empresa && (
+                      <select
+                        className={seletor}
+                        value={escolha[r.arquivo]?.empresa ?? ''}
+                        onChange={(e) =>
+                          setEscolha({
+                            ...escolha,
+                            [r.arquivo]: { ...(escolha[r.arquivo] ?? { fidc: '', empresa: '' }), empresa: e.target.value },
+                          })
+                        }
+                      >
+                        <option value="">Empresa…</option>
+                        {r.empresas.map((f) => (
+                          <option key={f}>{f}</option>
+                        ))}
+                      </select>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={enviando || (r.falta.fidc && !escolha[r.arquivo]?.fidc) || (r.falta.empresa && !escolha[r.arquivo]?.empresa)}
+                      onClick={() => completar(r.arquivo)}
+                    >
+                      Importar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p>❌ {r.erro}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+interface TituloTela {
+  ordem: number;
+  numero: string;
+  vencimento: string | null;
+  sacado: string;
+  valor: number;
+  desagio: number;
+  desagiado: number;
+}
+interface BorderoTela {
+  numero: string;
+  tipo: string | null;
+  fidc_nome: string;
+  arquivo: string | null;
+  usuario_nome: string | null;
+  qtd_titulos: number;
+  bruto: number;
+  desagio: number;
+  despesas_bancarias: number;
+  taxa_servico: number;
+  iss: number;
+  iof: number;
+  recompra: number;
+  desconto: number;
+  liquido: number;
+}
+
+/** Títulos de um borderô, carregados quando a pessoa abre. */
+function TitulosBordero({ id }: { id: number }) {
+  const [dados, setDados] = useState<{
+    bordero: BorderoTela;
+    titulos: TituloTela[];
+  } | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch(`/api/fidc/bordero?id=${id}`)
+      .then((r) => r.json())
+      .then((j) => vivo && (j.erro ? setErro(j.erro) : setDados(j)))
+      .catch(() => vivo && setErro('Falha de conexão com o servidor.'));
+    return () => {
+      vivo = false;
+    };
+  }, [id]);
+  if (erro) return <p className="p-3 text-body-sm text-error">{erro}</p>;
+  if (!dados) return <p className="p-3 text-body-sm text-on-surface-variant">Carregando títulos…</p>;
+  const { bordero: b, titulos } = dados;
+  const n = (v: unknown) => Number(v) || 0;
+  const custos = [
+    ['Deságio', n(b.desagio)],
+    ['Despesas bancárias', n(b.despesas_bancarias)],
+    ['Taxa de serviço', n(b.taxa_servico)],
+    ['ISS', n(b.iss)],
+    ['IOF', n(b.iof)],
+    ['Recompra', n(b.recompra)],
+    ['Desconto ao sacado', n(b.desconto)],
+  ].filter(([, v]) => v) as [string, number][];
+  return (
+    <div className="space-y-2 p-3">
+      <p className="text-label text-on-surface-variant">
+        Borderô {b.numero} · {b.fidc_nome}
+        {b.tipo ? ` · ${b.tipo}` : ''} · {titulos.length} títulos
+        {b.usuario_nome ? ` · importado por ${b.usuario_nome}` : ''}
+      </p>
+      <div className="flex flex-wrap gap-2 text-label">
+        {custos.map(([t, v]) => (
+          <span key={t} className="rounded-full bg-white px-2.5 py-1 text-on-surface ring-1 ring-border-muted">
+            {t}: <strong className="tabular-nums">{moeda(v)}</strong>
+          </span>
+        ))}
+      </div>
+      <div className="max-h-80 overflow-auto rounded-md bg-white ring-1 ring-border-muted">
+        <table className="w-full text-label">
+          <thead className="sticky top-0 bg-white">
+            <tr className="text-left uppercase text-on-surface-variant">
+              <th className="px-3 py-1.5 font-medium">Título</th>
+              <th className="px-3 py-1.5 font-medium">Vencimento</th>
+              <th className="px-3 py-1.5 font-medium">Sacado</th>
+              <th className="px-3 py-1.5 text-right font-medium">Valor</th>
+              <th className="px-3 py-1.5 text-right font-medium">Deságio</th>
+              <th className="px-3 py-1.5 text-right font-medium">Desagiado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {titulos.map((t) => (
+              <tr key={t.ordem} className="border-t border-border-muted">
+                <td className="px-3 py-1 tabular-nums">{t.numero}</td>
+                <td className="px-3 py-1 tabular-nums">{br(t.vencimento)}</td>
+                <td className="px-3 py-1">{t.sacado}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{moeda(n(t.valor))}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{moeda(n(t.desagio))}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{moeda(n(t.desagiado))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function Importar({ ultima }: { ultima: Importacao | null }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState<null | 'bordero' | 'planilha'>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [res, setRes] = useState<RespostaImportacao | null>(null);
@@ -515,7 +832,10 @@ function Importar({ ultima }: { ultima: Importacao | null }) {
     setErro(null);
     setRes(null);
     try {
-      const r = await fetch('/api/fidc/importar', { method: 'POST', body: new FormData(e.currentTarget) });
+      const r = await fetch('/api/fidc/importar', {
+        method: 'POST',
+        body: new FormData(e.currentTarget),
+      });
       const json = await r.json().catch(() => ({ erro: 'Resposta inválida do servidor.' }));
       if (!r.ok || json.erro) setErro(json.erro ?? 'Não consegui importar.');
       else {
@@ -544,11 +864,27 @@ function Importar({ ultima }: { ultima: Importacao | null }) {
             'Nenhuma planilha importada ainda.'
           )}
         </div>
-        <Button type="button" variant={aberto ? 'ghost' : 'secondary'} size="sm" onClick={() => setAberto(!aberto)}>
-          {aberto ? 'Fechar' : 'Importar planilha do dia'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={aberto === 'bordero' ? 'ghost' : 'primary'}
+            size="sm"
+            onClick={() => setAberto(aberto === 'bordero' ? null : 'bordero')}
+          >
+            {aberto === 'bordero' ? 'Fechar' : 'Importar borderô (PDF)'}
+          </Button>
+          <Button
+            type="button"
+            variant={aberto === 'planilha' ? 'ghost' : 'secondary'}
+            size="sm"
+            onClick={() => setAberto(aberto === 'planilha' ? null : 'planilha')}
+          >
+            {aberto === 'planilha' ? 'Fechar' : 'Importar planilha do dia'}
+          </Button>
+        </div>
       </div>
-      {aberto && (
+      {aberto === 'bordero' && <ImportarBordero />}
+      {aberto === 'planilha' && (
         <form ref={form} onSubmit={enviar} className="mt-4 space-y-3 border-t border-border-muted pt-4">
           <div>
             <label className="mb-1 block text-label text-on-surface-variant">
@@ -699,6 +1035,7 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
   const [empresa, setEmpresa] = useState('');
   const [diasVisiveis, setDiasVisiveis] = useState(15);
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
+  const [borderoAberto, setBorderoAberto] = useState<number | null>(null);
 
   const fidcs = useMemo(() => [...new Set(operacoes.map((o) => o.fidc))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [operacoes]);
   const empresas = useMemo(() => [...new Set(operacoes.map((o) => o.empresa))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [operacoes]);
@@ -715,20 +1052,44 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
   // os rankings respeitam o outro filtro (por FIDC filtra empresa e vice-versa)
   const opsFidc = useMemo(() => noPeriodo.filter((o) => !empresa || o.empresa === empresa), [noPeriodo, empresa]);
   const opsEmpresa = useMemo(() => noPeriodo.filter((o) => !fidc || o.fidc === fidc), [noPeriodo, fidc]);
-  const porMes = useMemo(
-    () => [...agrupar(filtradas, (o) => o.data.slice(0, 7)).entries()].sort((a, b) => b[0].localeCompare(a[0])),
-    [filtradas]
-  );
+  const porMes = useMemo(() => [...agrupar(filtradas, (o) => o.data.slice(0, 7)).entries()].sort((a, b) => b[0].localeCompare(a[0])), [filtradas]);
   const maxMes = Math.max(0, ...porMes.map(([, s]) => s.bruto));
   const listaDias = [...dias.keys()].sort().reverse();
 
   const kpis = [
-    { t: 'Antecipado (bruto)', v: curta(total.bruto), s: `${total.qtd} operações em ${dias.size} dias` },
-    { t: 'Custo (despesas)', v: curta(total.despesas), s: total.bruto ? `${pct(total.despesas / total.bruto)} do antecipado` : '—', c: 'text-secondary' },
-    { t: 'Recompras', v: curta(total.recompras), s: total.bruto ? `${pct(total.recompras / total.bruto)} do antecipado` : '—', c: total.recompras ? 'text-amber-700' : undefined },
-    { t: 'Desconto', v: curta(total.desconto + total.outros), s: total.outros ? `inclui ${curta(total.outros)} de prorrog./refat./troca` : 'retido pelos FIDCs' },
-    { t: 'Líquido recebido', v: curta(total.liquido), s: total.bruto ? `${pct(total.liquido / total.bruto)} do antecipado` : '—', c: 'text-green-700' },
-    { t: 'Média por dia', v: dias.size ? curta(total.bruto / dias.size) : '—', s: 'antecipado por dia com operação' },
+    {
+      t: 'Antecipado (bruto)',
+      v: curta(total.bruto),
+      s: `${total.qtd} operações em ${dias.size} dias`,
+    },
+    {
+      t: 'Custo (despesas)',
+      v: curta(total.despesas),
+      s: total.bruto ? `${pct(total.despesas / total.bruto)} do antecipado` : '—',
+      c: 'text-secondary',
+    },
+    {
+      t: 'Recompras',
+      v: curta(total.recompras),
+      s: total.bruto ? `${pct(total.recompras / total.bruto)} do antecipado` : '—',
+      c: total.recompras ? 'text-amber-700' : undefined,
+    },
+    {
+      t: 'Desconto',
+      v: curta(total.desconto + total.outros),
+      s: total.outros ? `inclui ${curta(total.outros)} de prorrog./refat./troca` : 'retido pelos FIDCs',
+    },
+    {
+      t: 'Líquido recebido',
+      v: curta(total.liquido),
+      s: total.bruto ? `${pct(total.liquido / total.bruto)} do antecipado` : '—',
+      c: 'text-green-700',
+    },
+    {
+      t: 'Média por dia',
+      v: dias.size ? curta(total.bruto / dias.size) : '—',
+      s: 'antecipado por dia com operação',
+    },
   ];
 
   return (
@@ -780,7 +1141,15 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
           </select>
         </div>
         {(fidc || empresa) && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => { setFidc(''); setEmpresa(''); }}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setFidc('');
+              setEmpresa('');
+            }}
+          >
             Limpar filtros
           </Button>
         )}
@@ -876,7 +1245,9 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
           <Card>
             <div className="border-b border-border-muted px-4 py-3">
               <p className="text-h2 text-on-surface">Operações por dia</p>
-              <p className="text-label text-on-surface-variant">Clique no dia para ver cada FIDC/empresa, como está na planilha.</p>
+              <p className="text-label text-on-surface-variant">
+                Clique no dia para ver cada FIDC/empresa. Onde tiver borderô importado, dá para ver os títulos antecipados.
+              </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-body-sm">
@@ -915,24 +1286,44 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
                         </tr>
                         {aberto &&
                           ops.map((o) => (
-                            <tr key={o.id} className="bg-surface-container-low text-on-surface-variant">
-                              <td className="py-1.5 pl-10 pr-4 text-label">{o.nome_original}</td>
-                              <td className="px-4 py-1.5">
-                                {o.fidc} · {o.empresa}
-                              </td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">{moeda(o.bruto)}</td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">{o.recompras ? moeda(o.recompras) : '—'}</td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">
-                                {o.desconto + o.refaturamento + o.nota_troca + o.substituicao + o.prorrogacao
-                                  ? moeda(o.desconto + o.refaturamento + o.nota_troca + o.substituicao + o.prorrogacao)
-                                  : '—'}
-                              </td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">
-                                {moeda(o.despesas)}
-                                {o.bruto ? <span className="ml-1 text-label">({pct(o.despesas / o.bruto)})</span> : null}
-                              </td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">{moeda(o.liquido)}</td>
-                            </tr>
+                            <Fragment key={o.id}>
+                              <tr className="bg-surface-container-low text-on-surface-variant">
+                                <td className="py-1.5 pl-10 pr-4 text-label">
+                                  {o.nome_original}
+                                  {o.bordero_id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setBorderoAberto(borderoAberto === o.bordero_id ? null : o.bordero_id)}
+                                      className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary hover:bg-primary/20"
+                                    >
+                                      {borderoAberto === o.bordero_id ? '▾' : '▸'} borderô · títulos
+                                    </button>
+                                  )}
+                                </td>
+                                <td className="px-4 py-1.5">
+                                  {o.fidc} · {o.empresa}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">{moeda(o.bruto)}</td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">{o.recompras ? moeda(o.recompras) : '—'}</td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                  {o.desconto + o.refaturamento + o.nota_troca + o.substituicao + o.prorrogacao
+                                    ? moeda(o.desconto + o.refaturamento + o.nota_troca + o.substituicao + o.prorrogacao)
+                                    : '—'}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                  {moeda(o.despesas)}
+                                  {o.bruto ? <span className="ml-1 text-label">({pct(o.despesas / o.bruto)})</span> : null}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">{moeda(o.liquido)}</td>
+                              </tr>
+                              {o.bordero_id && borderoAberto === o.bordero_id && (
+                                <tr className="bg-surface-container-low">
+                                  <td colSpan={7} className="pl-8">
+                                    <TitulosBordero id={o.bordero_id} />
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
                           ))}
                       </Fragment>
                     );
