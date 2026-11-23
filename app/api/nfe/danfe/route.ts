@@ -1,6 +1,6 @@
 import { requireNfe } from '@/lib/auth';
 import { gerarDanfePdf } from '@/lib/cartao/danfePdf';
-import { limparChave } from '@/lib/nfe/dados';
+import { limparChave, textoAdicionalEmitida } from '@/lib/nfe/dados';
 import { obterXml } from '@/lib/nfe/xml';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,9 @@ export async function GET(request: Request) {
   if (chave.length !== 44) return new Response('Chave inválida.', { status: 400 });
   const achado = await obterXml(chave);
   if (!achado) return new Response('XML não encontrado no ERP nem no NF-Stock: sem ele não dá para montar o DANFE.', { status: 404 });
-  const pdf = await gerarDanfePdf(achado.xml, chave);
+  // dados adicionais como o ORGM imprime (Obs + ObsCorpo da nota), não o texto sem acento do XML
+  const infCpl = achado.origem === 'erp' ? await textoAdicionalEmitida(chave) : null;
+  const pdf = await gerarDanfePdf(achado.xml, chave, { infCpl });
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',

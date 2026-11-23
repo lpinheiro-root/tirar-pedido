@@ -174,7 +174,11 @@ class Folha {
   }
 }
 
-export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Array> {
+/**
+ * `opcoes.infCpl`: texto das informações complementares como o sistema emissor imprime
+ * (no ORGM, Obs + ObsCorpo da nota, com acentos e quebras de linha). Sem ele, usa o do XML.
+ */
+export async function gerarDanfePdf(xml: string, chave: string, opcoes: { infCpl?: string | null } = {}): Promise<Uint8Array> {
   const doc = lerXml(xml);
   const proc = (doc.nfeProc ?? doc.procNFe ?? {}) as No;
   const inf = ((proc.NFe as No)?.infNFe ?? (doc.NFe as No)?.infNFe ?? {}) as Record<string, No>;
@@ -450,7 +454,7 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
     const icms = (Object.values((imposto.ICMS ?? {}) as No)[0] ?? {}) as No;
     const ipi = (((imposto.IPI ?? {}) as No).IPITrib ?? {}) as No;
     const descricao = [txt(p.xProd), txt(it.infAdProd)].filter(Boolean).join(' ');
-    const linhasDesc = d.quebrar(descricao, 6.3, fixas[1].w - 4).slice(0, 6);
+    const linhasDesc = d.quebrar(descricao, 6.3, fixas[1].w - 4).slice(0, 40);
     const h = 4 + linhasDesc.length * 7.5;
     if (!d.cabe(h)) {
       fecharTabela();
@@ -483,10 +487,14 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
   fecharTabela();
 
   // ── dados adicionais ──
-  const complementares = [txt(infAdic.infCpl)].filter(Boolean).join(' ');
+  // quebras de linha do texto original são mantidas (cada parágrafo quebra na largura do quadro)
+  const complementares = opcoes.infCpl?.trim() ? opcoes.infCpl : txt(infAdic.infCpl);
   const fisco = txt(infAdic.infAdFisco);
   const wCompl = W * 0.68;
-  const linhasCompl = d.quebrar(complementares, 6.3, wCompl - 6);
+  const linhasCompl = complementares
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .flatMap((l) => d.quebrar(l, 6.3, wCompl - 6));
   const linhasFisco = d.quebrar(fisco, 6.3, W - wCompl - 6);
   let feitas = 0;
   while (feitas < linhasCompl.length || feitas === 0) {

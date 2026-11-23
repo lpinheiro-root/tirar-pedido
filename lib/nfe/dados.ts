@@ -450,3 +450,28 @@ export async function xmlEmitida(chave: string): Promise<string | null> {
     WHERE c.ChaveNFE = @chave AND x.XmlTransacao LIKE '%<protNFe%'`);
   return recordset[0]?.xml ?? null;
 }
+
+/**
+ * "Dados adicionais" como o ORGM imprime: observação da nota (Obs) seguida da observação do
+ * corpo (ObsCorpo), com acentos, "Nº" e quebras de linha. O infCpl do XML é esse mesmo texto
+ * sem acento e numa linha só.
+ */
+export function textoAdicional(obs: unknown, obsCorpo: unknown): string {
+  return [obs, obsCorpo]
+    .map((t) => String(t ?? ''))
+    .join('\n')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Dados adicionais da nota emitida pelo ORGM (pela chave); null se não for nota do ERP. */
+export async function textoAdicionalEmitida(chave: string): Promise<string | null> {
+  const pool = await getPool();
+  const { recordset } = await pool.request().input('chave', sql.VarChar(44), chave).query(`
+    SELECT TOP 1 CAST(c.Obs AS varchar(max)) AS obs, CAST(c.ObsCorpo AS varchar(max)) AS obsCorpo
+    FROM dbo.fscNFCapa c WHERE c.ChaveNFE = @chave ORDER BY c.fscNFID DESC`);
+  if (!recordset.length) return null;
+  return textoAdicional(recordset[0].obs, recordset[0].obsCorpo);
+}

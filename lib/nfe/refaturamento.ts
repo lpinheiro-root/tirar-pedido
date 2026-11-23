@@ -3,7 +3,7 @@ import path from 'path';
 import sql from 'mssql';
 import { getPool } from '@/lib/sqlserver';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import type { Filtros, NotaEmitida } from './dados';
+import { textoAdicional, type Filtros, type NotaEmitida } from './dados';
 
 /**
  * Refaturamentos: o ERP não tem campo para isso. O faturamento escreve nas informações
@@ -212,9 +212,17 @@ export async function buscarRefaturamentos(f: Filtros): Promise<ResultadoRefatur
   // notas novas (capa do ERP)
   const ids = indice.itens.map((i) => i.id);
   const { recordset: novas } = await pool.request().query(`
-    SELECT ${COLUNAS} FROM dbo.fscNFCapa c LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
+    SELECT ${COLUNAS}, CAST(c.Obs AS varchar(max)) AS obs, CAST(c.ObsCorpo AS varchar(max)) AS obsCorpo
+    FROM dbo.fscNFCapa c LEFT JOIN dbo.fscNFTotais t ON t.fscNFID = c.fscNFID
     WHERE c.fscNFID IN (${ids.join(',')})`);
-  const porId = new Map<number, NotaEmitida>(novas.map((r) => [Number(r.id), comSituacao(r)]));
+  const porId = new Map<number, NotaEmitida>(
+    novas.map((r) => {
+      const { obs: _o, obsCorpo: _c, ...nota } = r;
+      return [Number(r.id), comSituacao(nota)];
+    })
+  );
+  // texto da nota igual ao do ORGM (com acento e quebras de linha), não o do XML
+  const textoOrgm = new Map<number, string>(novas.map((r) => [Number(r.id), textoAdicional(r.obs, r.obsCorpo)]));
 
   // candidatas a nota original: mesmos números, emitidas a partir de 2024
   const numeros = Array.from(new Set(indice.itens.flatMap((i) => i.refs))).map(Number).filter((n) => n > 0 && n < 1e12);
@@ -240,7 +248,7 @@ export async function buscarRefaturamentos(f: Filtros): Promise<ResultadoRefatur
       // a mais recente antes da nova
       return escolha.sort((a, b) => b.emissao.localeCompare(a.emissao) || b.id - a.id).slice(0, 1);
     });
-    ligados.push({ nova, refs: item.refs, originais, texto: item.texto });
+    ligados.push({ nova, refs: item.refs, originais, texto: textoOrgm.get(item.id) || item.texto });
   }
 
   const devolucoes = await devolucoesDasOriginais(
