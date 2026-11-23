@@ -585,6 +585,112 @@ function Importar({ ultima }: { ultima: Importacao | null }) {
   );
 }
 
+function Exportar({
+  primeira,
+  ultimaData,
+  ini,
+  fim,
+  fidc,
+  empresa,
+}: {
+  primeira: string;
+  ultimaData: string;
+  ini: string;
+  fim: string;
+  fidc: string;
+  empresa: string;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [modo, setModo] = useState<'dia' | 'periodo'>('dia');
+  const [dia, setDia] = useState(ultimaData);
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const [soFiltro, setSoFiltro] = useState(true);
+
+  function abrir() {
+    // período começa igual ao do painel, limitado às datas que existem
+    setDe(ini < primeira ? primeira : ini);
+    setAte(fim > ultimaData ? ultimaData : fim);
+    setAberto(true);
+  }
+
+  const [d1, d2] = modo === 'dia' ? [dia, dia] : [de, ate];
+  const invalido = !d1 || !d2 || d2 < d1;
+  const filtro = [fidc, empresa].filter(Boolean).join(' / ');
+  const q = new URLSearchParams({ de: d1, ate: d2 });
+  if (soFiltro && fidc) q.set('fidc', fidc);
+  if (soFiltro && empresa) q.set('empresa', empresa);
+
+  const chip = (ativo: boolean) =>
+    `rounded-full border px-3 py-1 text-body-sm font-semibold transition ${
+      ativo ? 'border-primary bg-primary text-white' : 'border-border-muted bg-white text-on-surface-variant hover:border-primary/40'
+    }`;
+
+  return (
+    <>
+      <span className="ml-auto">
+        <Button type="button" variant={aberto ? 'ghost' : 'secondary'} size="sm" onClick={() => (aberto ? setAberto(false) : abrir())}>
+          {aberto ? 'Fechar exportação' : 'Exportar Excel'}
+        </Button>
+      </span>
+      {aberto && (
+        <div className="mt-4 w-full space-y-3 border-t border-border-muted pt-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <span className="mb-1 block text-label text-on-surface-variant">Exportar</span>
+              <div className="flex gap-2">
+                <button type="button" className={chip(modo === 'dia')} onClick={() => setModo('dia')}>
+                  Um dia
+                </button>
+                <button type="button" className={chip(modo === 'periodo')} onClick={() => setModo('periodo')}>
+                  Período
+                </button>
+              </div>
+            </div>
+            {modo === 'dia' ? (
+              <div>
+                <label className="mb-1 block text-label text-on-surface-variant">Dia da operação</label>
+                <input type="date" className={seletor} value={dia} min={primeira} max={ultimaData} onChange={(e) => setDia(e.target.value)} />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="mb-1 block text-label text-on-surface-variant">De</label>
+                  <input type="date" className={seletor} value={de} onChange={(e) => setDe(e.target.value)} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-label text-on-surface-variant">Até</label>
+                  <input type="date" className={seletor} value={ate} onChange={(e) => setAte(e.target.value)} />
+                </div>
+              </>
+            )}
+            {filtro && (
+              <label className="flex items-center gap-2 pb-2 text-body-sm text-on-surface">
+                <input type="checkbox" checked={soFiltro} onChange={(e) => setSoFiltro(e.target.checked)} />
+                Só {filtro} (filtro do painel)
+              </label>
+            )}
+            {invalido ? (
+              <span className="pb-2 text-body-sm text-error">{d1 && d2 ? 'A data final é antes da inicial.' : 'Escolha a data.'}</span>
+            ) : (
+              <a
+                href={`/api/fidc/exportar?${q}`}
+                className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-body-sm font-semibold text-white hover:brightness-110"
+              >
+                Baixar Excel
+              </a>
+            )}
+          </div>
+          <p className="text-label text-on-surface-variant">
+            Sai no mesmo modelo da planilha do financeiro: uma aba por dia, com a operação e o faturamento
+            {soFiltro && filtro ? ' (o faturamento só sai sem filtro de FIDC/empresa, porque não é separado por FIDC)' : ''}.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultima: Importacao | null }) {
   const [periodo, setPeriodo] = useState<Periodo>('ano');
   const [de, setDe] = useState('');
@@ -677,6 +783,16 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
           <Button type="button" variant="ghost" size="sm" onClick={() => { setFidc(''); setEmpresa(''); }}>
             Limpar filtros
           </Button>
+        )}
+        {operacoes.length > 0 && (
+          <Exportar
+            primeira={operacoes[operacoes.length - 1].data}
+            ultimaData={operacoes[0].data}
+            ini={ini}
+            fim={fim}
+            fidc={fidc}
+            empresa={empresa}
+          />
         )}
       </Card>
 
