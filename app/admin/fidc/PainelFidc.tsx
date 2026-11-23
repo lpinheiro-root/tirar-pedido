@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/Card';
 export interface Operacao {
   id: number;
   bordero_id: number | null;
+  /** Taxa do deságio do borderô (ex.: 2,10), quando a operação tem borderô. */
+  desagio_pct?: number | null;
   origem: string;
   data: string;
   aba: string;
@@ -56,6 +58,15 @@ const curta = (v: number) => {
   return moeda(v);
 };
 const pct = (v: number) => `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+/** Taxa do deságio que veio no borderô, do lado do custo. Sem borderô, não mostra nada. */
+function Desagio({ pct: p }: { pct?: number | null }) {
+  if (!p) return null;
+  return (
+    <span className="ml-1 text-label text-on-surface-variant" title="Taxa do deságio no borderô">
+      ({p.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)
+    </span>
+  );
+}
 const br = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '—');
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const nomeMes = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
@@ -236,7 +247,7 @@ function Detalhe({
                   <td className="py-1 pr-2 text-right tabular-nums">{o.recompras ? moeda(o.recompras) : '—'}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">
                     {moeda(o.despesas)}
-                    {o.bruto ? <span className="ml-1 text-label text-on-surface-variant">({pct(o.despesas / o.bruto)})</span> : null}
+                    <Desagio pct={o.desagio_pct} />
                   </td>
                   <td className="py-1 text-right tabular-nums">{moeda(o.liquido)}</td>
                 </tr>
@@ -1312,7 +1323,7 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
                                 </td>
                                 <td className="px-4 py-1.5 text-right tabular-nums">
                                   {moeda(o.despesas)}
-                                  {o.bruto ? <span className="ml-1 text-label">({pct(o.despesas / o.bruto)})</span> : null}
+                                  <Desagio pct={o.desagio_pct} />
                                 </td>
                                 <td className="px-4 py-1.5 text-right tabular-nums">{moeda(o.liquido)}</td>
                               </tr>

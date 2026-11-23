@@ -115,6 +115,7 @@ export async function POST(request: Request) {
             qtd_titulos: b.qtdTitulos,
             bruto: b.bruto,
             desagio: b.desagio,
+            desagio_pct: b.desagioPct,
             taxa_servico: b.taxaServico,
             iss: b.iss,
             iof: b.iof,

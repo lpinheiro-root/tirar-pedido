@@ -30,6 +30,8 @@ export interface Bordero {
   qtdTitulos: number;
   bruto: number;
   desagio: number;
+  /** Taxa do deságio que vem no borderô ("2,10 (%)"). */
+  desagioPct: number | null;
   taxaServico: number;
   iss: number;
   iof: number;
@@ -143,6 +145,9 @@ export function lerBordero(linhas: Linha[]): Bordero {
   const qtdTitulos = /^\d+$/.test(qtdTexto) ? Number(qtdTexto) : titulos.length;
 
   const desagio = valorDoResumo(textos, /^(Des[áa]gio|Fator)\.{3,}/i) ?? 0;
+  const iDesagio = textos.findIndex((t) => /^(Des[áa]gio|Fator)\.{3,}/i.test(t));
+  const textoPct = iDesagio >= 0 ? textos.slice(iDesagio + 1, iDesagio + 3).find((t) => t.includes('%')) : undefined;
+  const desagioPct = textoPct ? Number(textoPct.replace(/[^\d,.]/g, '').replace(',', '.')) || null : null;
   const taxaServico = valorDoResumo(textos, /^Taxa de servi/i) ?? 0;
   const iss = valorDoResumo(textos, /^I\.S\.S/i) ?? 0;
   const iof = valorDoResumo(textos, /^I\.O\.F/i) ?? 0;
@@ -177,6 +182,7 @@ export function lerBordero(linhas: Linha[]): Bordero {
     qtdTitulos,
     bruto,
     desagio,
+    desagioPct,
     taxaServico,
     iss,
     iof,

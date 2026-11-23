@@ -30,6 +30,10 @@ export default async function FidcPage() {
       .limit(1)
       .maybeSingle();
     ultima = (data as Importacao | null) ?? null;
+    // taxa do deságio de cada borderô (coluna nova; se ainda não existir, só não mostra)
+    const { data: bs } = await db.from('fidc_borderos').select('id,desagio_pct');
+    const pctPorBordero = new Map((bs ?? []).map((b) => [b.id as number, Number(b.desagio_pct) || null]));
+    operacoes = operacoes.map((o) => ({ ...o, desagio_pct: o.bordero_id ? pctPorBordero.get(o.bordero_id) ?? null : null }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     falta = /fidc_/.test(msg) ? 'Falta rodar o supabase/fidc.sql no Supabase.' : msg;
