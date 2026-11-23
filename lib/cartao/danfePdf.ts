@@ -2,11 +2,13 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { lerXml } from './sefaz';
 
 /**
- * DANFE em PDF no layout padrão (o mesmo do NF-Stock / portal da NF-e), gerado
- * no servidor a partir do XML autorizado: canhoto, emitente, quadro DANFE,
- * código de barras da chave, destinatário, fatura, cálculo do imposto,
- * transportador, produtos e dados adicionais. Usa as fontes padrão do PDF
- * (WinAnsi): caracteres fora dessa tabela são trocados por equivalentes simples.
+ * DANFE em PDF no mesmo layout do ORGM (que imprime com o DanfeSharp), gerado no servidor a
+ * partir do XML autorizado: canhoto, emitente, quadro DANFE, código de barras da chave,
+ * destinatário, fatura, cálculo do imposto (com IBS/CBS), transportador, produtos e, no pé da
+ * 1ª folha, os dados adicionais montados como o ORGM monta:
+ *   "Inf. Contribuinte: <infCpl> Pedido: <xPed>" + "Valor Aproximado dos Tributos: R$ <vTotTrib>".
+ * Fonte Times (padrão do PDF, WinAnsi): caracteres fora dessa tabela viram equivalentes simples.
+ * Conferido com o DANFE da NF 38024 (ROMA) baixado do ORGM.
  */
 
 type No = Record<string, unknown>;
@@ -15,9 +17,12 @@ const num = (v: unknown) => Number(v ?? 0);
 const lista = <T>(v: T | T[] | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const decimal = (v: unknown, casas = 2, max = casas) =>
   num(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: max });
+/** valor só quando o campo existe no XML (o ORGM deixa a célula vazia quando não há) */
+const decimalSe = (v: unknown, casas = 2) => (v == null || v === '' ? '' : decimal(v, casas));
 const FUSO = 'America/Sao_Paulo';
 const data = (v: unknown) => (v ? new Date(txt(v)).toLocaleDateString('pt-BR', { timeZone: FUSO }) : '');
 const hora = (v: unknown) => (v ? new Date(txt(v)).toLocaleTimeString('pt-BR', { timeZone: FUSO }) : '');
+const dataDia = (v: unknown) => (v ? txt(v).slice(0, 10).split('-').reverse().join('/') : '');
 
 // WinAnsi não tem alguns símbolos comuns em XML de NF-e
 function limpar(s: string): string {
@@ -37,16 +42,22 @@ function cnpjCpf(v: unknown) {
   return s;
 }
 const cep = (v: unknown) => txt(v).replace(/^(\d{5})(\d{3})$/, '$1-$2');
+function fone(v: unknown) {
+  const s = txt(v).replace(/\D/g, '');
+  if (s.length === 10) return s.replace(/^(\d{2})(\d{4})(\d{4})$/, '($1) $2-$3');
+  if (s.length === 11) return s.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+  return txt(v);
+}
 const numeroNota = (v: unknown) => txt(v).padStart(9, '0').replace(/^(\d{3})(\d{3})(\d{3})$/, '$1.$2.$3');
-const serieNota = (v: unknown) => txt(v).padStart(3, '0');
+const cfop = (v: unknown) => txt(v).replace(/^(\d)(\d{3})$/, '$1.$2');
 
 const MOD_FRETE: Record<string, string> = {
-  '0': '(0) Emitente',
-  '1': '(1) Destinatário',
-  '2': '(2) Terceiros',
-  '3': '(3) Próprio Remetente',
-  '4': '(4) Próprio Destinatário',
-  '9': '(9) Sem Frete',
+  '0': '0-Por conta Remetente',
+  '1': '1-Por conta Destinatário',
+  '2': '2-Por conta Terceiros',
+  '3': '3-Próprio Remetente',
+  '4': '4-Próprio Destinatário',
+  '9': '9-Sem Transporte',
 };
 
 // ── Code 128 (conjunto C) para a chave de acesso ─────────────────────────────
@@ -76,6 +87,7 @@ const M = 14;
 const W = A4.w - 2 * M;
 const PRETO = rgb(0, 0, 0);
 const LINHA = 0.6;
+const H = 16; // altura das linhas de campos
 
 type Alinhamento = 'esq' | 'dir' | 'centro';
 
@@ -92,9 +104,6 @@ class Folha {
   nova() {
     this.page = this.doc.addPage([A4.w, A4.h]);
     this.t = M;
-  }
-  cabe(altura: number) {
-    return this.t + altura <= A4.h - M - 8;
   }
 
   /** ajusta o texto à largura: diminui a fonte até `min` e, se preciso, corta */
@@ -128,6 +137,13 @@ class Folha {
     if (atual) linhas.push(atual);
     return linhas;
   }
+  /** quebra mantendo as quebras de linha do texto */
+  paragrafos(s: string, tamanho: number, largura: number, fonte = this.f) {
+    return s
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
+      .flatMap((l) => this.quebrar(l, tamanho, largura, fonte));
+  }
 
   /** texto com a linha de base em `topo` (medido do topo) */
   texto(s: string, x: number, topo: number, tamanho: number, fonte = this.f, largura?: number, alinhar: Alinhamento = 'esq') {
@@ -146,19 +162,19 @@ class Folha {
     this.page.drawLine({
       start: { x: x1, y: A4.h - t1 },
       end: { x: x2, y: A4.h - t2 },
-      thickness: LINHA,
+      thickness: tracejada ? 0.4 : LINHA,
       color: PRETO,
-      dashArray: tracejada ? [3, 2] : undefined,
+      dashArray: tracejada ? [2.5, 2] : undefined,
     });
   }
-  /** campo: caixa com rótulo pequeno em cima e o valor embaixo */
-  campo(x: number, topo: number, w: number, h: number, rotulo: string, valor: string, alinhar: Alinhamento = 'esq', tamanho = 8.5) {
+  /** campo: caixa com rótulo pequeno em cima e o valor embaixo, em negrito */
+  campo(x: number, topo: number, w: number, h: number, rotulo: string, valor: string, alinhar: Alinhamento = 'esq', tamanho = 9.5) {
     this.caixa(x, topo, w, h);
-    this.texto(rotulo.toUpperCase(), x + 2, topo + 6.5, 5.2, this.f, w - 4);
-    if (valor) this.texto(valor, x + 3, topo + h - 4, tamanho, this.fb, w - 6, alinhar);
+    this.texto(rotulo.toUpperCase(), x + 1.5, topo + 5.6, 5.2, this.f, w - 3);
+    if (valor) this.texto(valor, x + 2, topo + h - 2.5, tamanho, this.fb, w - 4, alinhar);
   }
   /** linha de campos com larguras proporcionais ao peso, ocupando a largura útil */
-  linhaCampos(campos: { r: string; v: string; p: number; a?: Alinhamento }[], h = 21, tamanho = 8.5) {
+  linhaCampos(campos: { r: string; v: string; p: number; a?: Alinhamento }[], h = H, tamanho = 9.5) {
     const total = campos.reduce((s, c) => s + c.p, 0);
     let x = M;
     for (const c of campos) {
@@ -169,16 +185,37 @@ class Folha {
     this.t += h;
   }
   titulo(s: string) {
-    this.texto(s.toUpperCase(), M, this.t + 9, 7, this.fb);
-    this.t += 11;
+    this.texto(s.toUpperCase(), M, this.t + 6.8, 6.8, this.f);
+    this.t += 8;
   }
 }
 
-/**
- * `opcoes.infCpl`: texto das informações complementares como o sistema emissor imprime
- * (no ORGM, Obs + ObsCorpo da nota, com acentos e quebras de linha). Sem ele, usa o do XML.
- */
-export async function gerarDanfePdf(xml: string, chave: string, opcoes: { infCpl?: string | null } = {}): Promise<Uint8Array> {
+/** Texto de "Informações complementares" como o ORGM (DanfeSharp) monta. */
+function textoAdicional(inf: Record<string, No>, ide: No, dest: No, tot: No): string {
+  const infAdic = (inf.infAdic ?? {}) as No;
+  const compra = (inf.compra ?? {}) as No;
+  const partes: string[] = [];
+  const add = (chave: string, valor: string) => partes.push(`${chave}: ${valor}`);
+  const infCpl = txt(infAdic.infCpl).trim();
+  if (infCpl) add('Inf. Contribuinte', infCpl.replace(/;/g, '\n'));
+  if (txt(dest.email).trim()) add('Email do Destinatário', txt(dest.email).trim());
+  if (txt(infAdic.infAdFisco).trim()) add('Inf. fisco', txt(infAdic.infAdFisco).trim());
+  const pedido = txt(compra.xPed).trim();
+  if (pedido) {
+    const jaTem = new RegExp(`Pedido\\s*:?\\s*${pedido.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(infCpl);
+    if (!jaTem) add('Pedido', pedido);
+  }
+  if (txt(compra.xCont).trim()) add('Contrato Nº', txt(compra.xCont).trim());
+  if (txt(compra.xNEmp).trim()) add('Nota de Empenho', txt(compra.xNEmp).trim());
+  for (const ref of lista(ide.NFref as No | No[] | undefined)) {
+    if (ref.refNFe) partes.push(`refNFe: ${txt(ref.refNFe).replace(/(\d{4})(?=\d)/g, '$1 ')}`);
+  }
+  let texto = partes.join(' ');
+  if (tot.vTotTrib != null) texto += `\nValor Aproximado dos Tributos: R$ ${decimal(tot.vTotTrib)}`;
+  return texto;
+}
+
+export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Array> {
   const doc = lerXml(xml);
   const proc = (doc.nfeProc ?? doc.procNFe ?? {}) as No;
   const inf = ((proc.NFe as No)?.infNFe ?? (doc.NFe as No)?.infNFe ?? {}) as Record<string, No>;
@@ -188,58 +225,60 @@ export async function gerarDanfePdf(xml: string, chave: string, opcoes: { infCpl
   const ender = (emit.enderEmit ?? {}) as No;
   const dest = inf.dest ?? {};
   const enderDest = (dest.enderDest ?? {}) as No;
-  const tot = ((inf.total as No)?.ICMSTot ?? {}) as No;
+  const total = (inf.total ?? {}) as No;
+  const tot = (total.ICMSTot ?? {}) as No;
+  const ibsCbs = (total.IBSCBSTot ?? null) as No | null;
   const transp = (inf.transp ?? {}) as No;
   const transporta = (transp.transporta ?? {}) as No;
   const veiculo = (transp.veicTransp ?? {}) as No;
   const volumes = lista(transp.vol as No | No[]);
   const duplicatas = lista(((inf.cobr as No | undefined)?.dup ?? undefined) as No | No[] | undefined);
   const itens = (inf.det ?? []) as unknown as { '@nItem': string; prod: No; imposto?: No; infAdProd?: string }[];
-  const infAdic = (inf.infAdic ?? {}) as No;
   const emissao = ide.dhEmi ?? ide.dEmi;
   const saida = ide.dhSaiEnt ?? ide.dSaiEnt;
   const chaveFmt = chave.replace(/(\d{4})(?=\d)/g, '$1 ');
+  const nNF = numeroNota(ide.nNF);
+  const serie = txt(ide.serie).replace(/^0+(?=\d)/, '');
 
   const pdf = await PDFDocument.create();
   pdf.setTitle(`NF-e ${txt(ide.nNF)} - ${limpar(txt(emit.xNome))}`);
   pdf.setProducer('Natuhair');
   const d = new Folha(
     pdf,
-    await pdf.embedFont(StandardFonts.Helvetica),
-    await pdf.embedFont(StandardFonts.HelveticaBold),
-    await pdf.embedFont(StandardFonts.HelveticaOblique)
+    await pdf.embedFont(StandardFonts.TimesRoman),
+    await pdf.embedFont(StandardFonts.TimesRomanBold),
+    await pdf.embedFont(StandardFonts.TimesRomanItalic)
   );
   const folhas: { page: PDFPage; x: number; topo: number; w: number }[] = [];
 
   // ── canhoto (só na 1ª folha) ──
   const canhoto = () => {
-    const wNf = 105;
+    const wNf = 95;
     const wTexto = W - wNf;
+    const h = 48;
     d.caixa(M, d.t, wTexto, 26);
-    const recebemos =
-      `RECEBEMOS DE ${txt(emit.xNome)} OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA ABAIXO. ` +
-      `EMISSÃO: ${data(emissao)} VALOR TOTAL: R$ ${decimal(tot.vNF)} DESTINATÁRIO: ${txt(dest.xNome)} - ` +
-      `${[txt(enderDest.xLgr), txt(enderDest.nro), txt(enderDest.xBairro), txt(enderDest.xMun)].filter(Boolean).join(', ')}-${txt(enderDest.UF)}`;
-    d.quebrar(recebemos.toUpperCase(), 6.2, wTexto - 6)
+    const l1 = `Recebemos de ${txt(emit.xNome)} os produtos e/ou serviços constantes na Nota Fiscal Eletrônica indicada abaixo.`;
+    const l2 = `Emissão: ${data(emissao)} Valor Total: R$ ${decimal(tot.vNF)} Destinatário: ${txt(dest.xNome)}`;
+    [...d.quebrar(l1, 7.8, wTexto - 6), ...d.quebrar(l2, 7.8, wTexto - 6)]
       .slice(0, 3)
-      .forEach((l, i) => d.texto(l, M + 3, d.t + 7.5 + i * 7.5, 6.2));
-    d.campo(M, d.t + 26, 130, 24, 'Data de recebimento', '');
-    d.campo(M + 130, d.t + 26, wTexto - 130, 24, 'Identificação e assinatura do recebedor', '');
+      .forEach((l, i) => d.texto(l, M + 3, d.t + 8 + i * 8, 7.8));
+    d.campo(M, d.t + 26, wTexto / 2, h - 26, 'Data de recebimento', '');
+    d.campo(M + wTexto / 2, d.t + 26, wTexto / 2, h - 26, 'Identificação e assinatura do recebedor', '');
     const xN = M + wTexto;
-    d.caixa(xN, d.t, wNf, 50);
-    d.texto('NF-e', xN, d.t + 15, 13, d.fb, wNf, 'centro');
-    d.texto(`Nº. ${numeroNota(ide.nNF)}`, xN, d.t + 30, 8, d.fb, wNf, 'centro');
-    d.texto(`Série ${serieNota(ide.serie)}`, xN, d.t + 41, 8, d.fb, wNf, 'centro');
-    d.t += 56;
+    d.caixa(xN, d.t, wNf, h);
+    d.texto('NF-e', xN, d.t + 15, 14, d.fb, wNf, 'centro');
+    d.texto(`Nº.: ${nNF}`, xN, d.t + 31, 10, d.fb, wNf, 'centro');
+    d.texto(`Série: ${serie}`, xN, d.t + 42, 10, d.fb, wNf, 'centro');
+    d.t += h + 5;
     d.linha(M, d.t, M + W, d.t, true);
-    d.t += 6;
+    d.t += 7;
   };
 
   // ── quadro do emitente, DANFE e chave (repete em todas as folhas) ──
   const cabecalho = () => {
-    const h = 104;
-    const wEmit = 222;
-    const wDanfe = 100;
+    const h = 80;
+    const wEmit = 223;
+    const wDanfe = 86;
     const xDanfe = M + wEmit;
     const xChave = xDanfe + wDanfe;
     const wChave = W - wEmit - wDanfe;
@@ -247,78 +286,65 @@ export async function gerarDanfePdf(xml: string, chave: string, opcoes: { infCpl
 
     // emitente
     d.caixa(M, topo, wEmit, h);
-    d.texto('IDENTIFICAÇÃO DO EMITENTE', M, topo + 9, 6, d.fi, wEmit, 'centro');
-    const nome = d.quebrar(txt(emit.xNome), 10, wEmit - 12, d.fb).slice(0, 2);
-    let ty = topo + 30 - (nome.length - 1) * 5;
+    d.texto('IDENTIFICAÇÃO DO EMITENTE', M, topo + 6.5, 5.5, d.f, wEmit, 'centro');
+    const nome = d.quebrar(txt(emit.xNome), 10.5, wEmit - 8, d.fb).slice(0, 2);
+    let ty = topo + 32 - (nome.length - 1) * 5.5;
     for (const l of nome) {
-      d.texto(l, M + 6, ty, 10, d.fb, wEmit - 12, 'centro');
-      ty += 11.5;
+      d.texto(l, M + 4, ty, 10.5, d.fb, wEmit - 8, 'centro');
+      ty += 10.5;
     }
-    const endEmit = [
-      [txt(ender.xLgr), txt(ender.nro), txt(ender.xCpl)].filter(Boolean).join(', '),
-      [txt(ender.xBairro), cep(ender.CEP)].filter(Boolean).join(' - '),
-      [txt(ender.xMun), txt(ender.UF)].filter(Boolean).join(' - '),
-      ender.fone ? `Fone: ${txt(ender.fone)}` : '',
-    ].filter(Boolean);
-    endEmit.forEach((l, i) => d.texto(l.toUpperCase(), M + 4, ty + 3 + i * 9, 7.2, d.f, wEmit - 8, 'centro'));
+    const linha1 = `${[txt(ender.xLgr), txt(ender.nro)].filter(Boolean).join(', ')}${ender.xCpl ? ` - ${txt(ender.xCpl)}` : ''}`;
+    const linha2 = [txt(ender.xBairro), ender.CEP ? `CEP: ${cep(ender.CEP)}` : ''].filter(Boolean).join(' - ');
+    const linha3 = `${[txt(ender.xMun), txt(ender.UF)].filter(Boolean).join(' - ')}${ender.fone ? ` Fone: ${fone(ender.fone)}` : ''}`;
+    [linha1, linha2, linha3]
+      .filter(Boolean)
+      .forEach((l, i) => d.texto(l, M + 4, ty - 2 + i * 7.6, 7.6, d.f, wEmit - 8, 'centro'));
 
     // quadro DANFE
     d.caixa(xDanfe, topo, wDanfe, h);
-    d.texto('DANFE', xDanfe, topo + 17, 14, d.fb, wDanfe, 'centro');
-    d.texto('Documento Auxiliar da Nota Fiscal', xDanfe + 4, topo + 26, 5.6, d.f, wDanfe - 8, 'centro');
-    d.texto('Eletrônica', xDanfe + 4, topo + 32.5, 5.6, d.f, wDanfe - 8, 'centro');
-    d.texto('0 - ENTRADA', xDanfe + 14, topo + 44, 6.2);
-    d.texto('1 - SAÍDA', xDanfe + 14, topo + 52, 6.2);
-    d.caixa(xDanfe + 66, topo + 39, 13, 14);
-    d.texto(txt(ide.tpNF), xDanfe + 66, topo + 50, 9, d.fb, 13, 'centro');
-    d.texto(`Nº. ${numeroNota(ide.nNF)}`, xDanfe, topo + 68, 8.5, d.fb, wDanfe, 'centro');
-    d.texto(`Série ${serieNota(ide.serie)}`, xDanfe, topo + 79, 8.5, d.fb, wDanfe, 'centro');
-    folhas.push({ page: d.page, x: xDanfe, topo: topo + 90, w: wDanfe });
+    d.texto('DANFE', xDanfe, topo + 11, 12, d.fb, wDanfe, 'centro');
+    d.texto('Documento Auxiliar da', xDanfe + 3, topo + 19.5, 7.4, d.f, wDanfe - 6, 'centro');
+    d.texto('Nota Fiscal Eletrônica', xDanfe + 3, topo + 27, 7.4, d.f, wDanfe - 6, 'centro');
+    d.texto('0 - ENTRADA', xDanfe + 4, topo + 36, 7);
+    d.texto('1 - SAÍDA', xDanfe + 4, topo + 44, 7);
+    d.caixa(xDanfe + 60, topo + 32, 11, 12);
+    d.texto(txt(ide.tpNF), xDanfe + 60, topo + 41.5, 9, d.fb, 11, 'centro');
+    d.texto(`Nº.: ${nNF}`, xDanfe + 2, topo + 56, 9, d.fb, wDanfe - 4, 'centro');
+    d.texto(`Série: ${serie}`, xDanfe, topo + 66, 9, d.fb, wDanfe, 'centro');
+    folhas.push({ page: d.page, x: xDanfe, topo: topo + 75.5, w: wDanfe });
 
     // código de barras, chave e consulta
-    d.caixa(xChave, topo, wChave, 40);
     const barras = code128c(chave);
     const modulos = barras.reduce((s, b) => s + b, 0);
-    const modulo = (wChave - 16) / modulos;
-    let bx = xChave + 8;
+    const modulo = (wChave - 20) / modulos;
+    let bx = xChave + 10;
     barras.forEach((largura, i) => {
-      if (i % 2 === 0) {
-        d.page.drawRectangle({ x: bx, y: A4.h - topo - 35, width: largura * modulo, height: 30, color: PRETO });
-      }
+      if (i % 2 === 0) d.page.drawRectangle({ x: bx, y: A4.h - topo - 33, width: largura * modulo, height: 29, color: PRETO });
       bx += largura * modulo;
     });
-    d.campo(xChave, topo + 40, wChave, 22, 'Chave de acesso', '');
-    d.texto(chaveFmt, xChave + 3, topo + 58, 8, d.fb, wChave - 6, 'centro');
-    d.caixa(xChave, topo + 62, wChave, h - 62);
-    d.texto('Consulta de autenticidade no portal nacional da NF-e', xChave + 3, topo + 78, 6.8, d.f, wChave - 6, 'centro');
-    d.texto(
-      'www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora',
-      xChave + 3,
-      topo + 87,
-      6.8,
-      d.f,
-      wChave - 6,
-      'centro'
-    );
+    d.campo(xChave, topo + 36, wChave, 17, 'Chave de acesso', chaveFmt, 'centro', 9.5);
+    d.caixa(xChave, topo + 53, wChave, h - 53);
+    d.texto('Consulta de autenticidade no portal nacional da NF-e', xChave + 3, topo + 63, 8.4, d.f, wChave - 6, 'centro');
+    d.texto('www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora', xChave + 3, topo + 72.5, 8.4, d.f, wChave - 6, 'centro');
     d.t += h;
 
     // natureza da operação / protocolo
     const wNat = wEmit + wDanfe;
-    d.campo(M, d.t, wNat, 21, 'Natureza da operação', txt(ide.natOp).toUpperCase(), 'centro');
+    d.campo(M, d.t, wNat, H, 'Natureza da operação', txt(ide.natOp));
     d.campo(
       M + wNat,
       d.t,
       W - wNat,
-      21,
-      'Protocolo de autorização de uso',
+      H,
+      'Protocolo de autorização',
       prot.nProt ? `${txt(prot.nProt)} - ${data(prot.dhRecbto)} ${hora(prot.dhRecbto)}` : '',
       'centro'
     );
-    d.t += 21;
+    d.t += H;
     d.linhaCampos([
-      { r: 'Inscrição estadual', v: txt(emit.IE), p: 1 },
-      { r: 'Inscrição estadual do subst. tribut.', v: txt(emit.IEST), p: 1 },
-      { r: 'CNPJ', v: cnpjCpf(emit.CNPJ ?? emit.CPF), p: 1, a: 'centro' },
+      { r: 'Inscrição estadual', v: txt(emit.IE), p: 3.1, a: 'centro' },
+      { r: 'Inscrição estadual do subst. tributário', v: txt(emit.IEST), p: 2.95, a: 'centro' },
+      { r: 'CNPJ', v: cnpjCpf(emit.CNPJ ?? emit.CPF), p: 3.1, a: 'centro' },
     ]);
   };
 
@@ -329,208 +355,217 @@ export async function gerarDanfePdf(xml: string, chave: string, opcoes: { infCpl
   // ── destinatário / remetente ──
   d.titulo('Destinatário / Remetente');
   d.linhaCampos([
-    { r: 'Nome / razão social', v: txt(dest.xNome).toUpperCase(), p: 6 },
-    { r: 'CNPJ / CPF', v: cnpjCpf(dest.CNPJ ?? dest.CPF ?? dest.idEstrangeiro), p: 2.3 },
-    { r: 'Data da emissão', v: data(emissao), p: 1.7 },
+    { r: 'Razão social', v: txt(dest.xNome), p: 530 },
+    { r: 'CNPJ / CPF', v: cnpjCpf(dest.CNPJ ?? dest.CPF ?? dest.idEstrangeiro), p: 225, a: 'dir' },
+    { r: 'Data de emissão', v: data(emissao), p: 145, a: 'centro' },
   ]);
   d.linhaCampos([
-    { r: 'Endereço', v: [txt(enderDest.xLgr), txt(enderDest.nro), txt(enderDest.xCpl)].filter(Boolean).join(', ').toUpperCase(), p: 4.3 },
-    { r: 'Bairro / distrito', v: txt(enderDest.xBairro).toUpperCase(), p: 2.4 },
-    { r: 'CEP', v: cep(enderDest.CEP), p: 1.6 },
-    { r: 'Data da saída/entrada', v: data(saida), p: 1.7 },
+    {
+      r: 'Endereço',
+      v: `${[txt(enderDest.xLgr), txt(enderDest.nro)].filter(Boolean).join(', ')}${enderDest.xCpl ? ` - ${txt(enderDest.xCpl)}` : ''}`,
+      p: 415,
+    },
+    { r: 'Bairro / distrito', v: txt(enderDest.xBairro), p: 190 },
+    { r: 'CEP', v: cep(enderDest.CEP), p: 150, a: 'centro' },
+    { r: 'Data entrada / saída', v: data(saida), p: 145, a: 'centro' },
   ]);
   d.linhaCampos([
-    { r: 'Município', v: txt(enderDest.xMun).toUpperCase(), p: 3.6 },
-    { r: 'UF', v: txt(enderDest.UF), p: 0.7 },
-    { r: 'Fone / fax', v: txt(enderDest.fone), p: 1.7 },
-    { r: 'Inscrição estadual', v: txt(dest.IE), p: 2.3 },
-    { r: 'Hora da saída/entrada', v: hora(saida), p: 1.7 },
+    { r: 'Município', v: txt(enderDest.xMun), p: 290 },
+    { r: 'Fone / fax', v: enderDest.fone ? fone(enderDest.fone) : '', p: 155, a: 'dir' },
+    { r: 'UF', v: txt(enderDest.UF), p: 30, a: 'centro' },
+    { r: 'Inscrição estadual', v: txt(dest.IE), p: 280, a: 'centro' },
+    { r: 'Hora entrada / saída', v: hora(saida), p: 145, a: 'centro' },
   ]);
 
   // ── fatura / duplicatas ──
   if (duplicatas.length) {
-    d.titulo('Fatura / Duplicatas');
-    const porLinha = 7;
+    d.titulo('Fatura / Duplicata');
+    const porLinha = 9;
     const wDup = W / porLinha;
+    const linhas = Math.ceil(duplicatas.length / porLinha);
+    const hLinha = 24;
+    d.caixa(M, d.t, W, linhas * hLinha);
     duplicatas.forEach((dup, i) => {
       const x = M + (i % porLinha) * wDup;
-      if (i > 0 && i % porLinha === 0) d.t += 26;
-      d.caixa(x, d.t, wDup, 26);
-      d.texto(`Num.: ${txt(dup.nDup)}`, x + 3, d.t + 8, 6.5, d.f, wDup - 6);
-      d.texto(`Venc.: ${data(txt(dup.dVenc) + 'T12:00:00')}`, x + 3, d.t + 15.5, 6.5, d.f, wDup - 6);
-      d.texto(`Valor: R$ ${decimal(dup.vDup)}`, x + 3, d.t + 23, 6.5, d.fb, wDup - 6);
+      const y = d.t + Math.floor(i / porLinha) * hLinha;
+      const par = (rotulo: string, valor: string, yy: number) => {
+        d.texto(rotulo, x + 2, yy, 6.6);
+        d.texto(valor, x + 2, yy, 6.6, d.fb, wDup - 6, 'dir');
+      };
+      par('Número', txt(dup.nDup), y + 7);
+      par('Vencimento:', dataDia(dup.dVenc), y + 14.5);
+      par('Valor:', `R$ ${decimal(dup.vDup)}`, y + 22);
     });
-    d.t += 26;
+    d.t += linhas * hLinha;
   }
 
   // ── cálculo do imposto ──
   d.titulo('Cálculo do imposto');
+  const v = (r: string, x: unknown) => ({ r, v: decimal(x), p: 1, a: 'dir' as Alinhamento });
   d.linhaCampos([
-    { r: 'Base de cálculo do ICMS', v: decimal(tot.vBC), p: 1, a: 'dir' },
-    { r: 'Valor do ICMS', v: decimal(tot.vICMS), p: 1, a: 'dir' },
-    { r: 'Base de cálc. ICMS S.T.', v: decimal(tot.vBCST), p: 1, a: 'dir' },
-    { r: 'Valor do ICMS subst.', v: decimal(tot.vST), p: 1, a: 'dir' },
-    { r: 'Valor imp. importação', v: decimal(tot.vII), p: 1, a: 'dir' },
-    { r: 'Valor do PIS', v: decimal(tot.vPIS), p: 1, a: 'dir' },
-    { r: 'Valor total dos produtos', v: decimal(tot.vProd), p: 1.2, a: 'dir' },
+    v('Base de cálc. do ICMS', tot.vBC),
+    v('Valor do ICMS', tot.vICMS),
+    v('Base de cálc. ICMS S.T.', tot.vBCST),
+    v('Valor do ICMS subst.', tot.vST),
+    v('V. imp. importação', tot.vII),
+    v('V. ICMS UF remet.', tot.vICMSUFRemet),
+    v('Valor do FCP', tot.vFCP),
+    v('Valor do PIS', tot.vPIS),
+    v('V. total produtos', tot.vProd),
   ]);
   d.linhaCampos([
-    { r: 'Valor do frete', v: decimal(tot.vFrete), p: 1, a: 'dir' },
-    { r: 'Valor do seguro', v: decimal(tot.vSeg), p: 1, a: 'dir' },
-    { r: 'Desconto', v: decimal(tot.vDesc), p: 1, a: 'dir' },
-    { r: 'Outras despesas', v: decimal(tot.vOutro), p: 1, a: 'dir' },
-    { r: 'Valor total do IPI', v: decimal(tot.vIPI), p: 1, a: 'dir' },
-    { r: 'Valor da COFINS', v: decimal(tot.vCOFINS), p: 1, a: 'dir' },
-    { r: 'Valor total da nota', v: decimal(tot.vNF), p: 1.2, a: 'dir' },
+    v('Valor do frete', tot.vFrete),
+    v('Valor do seguro', tot.vSeg),
+    v('Desconto', tot.vDesc),
+    v('Outras despesas', tot.vOutro),
+    v('Valor IPI', tot.vIPI),
+    v('V. ICMS UF dest.', tot.vICMSUFDest),
+    v('V. tot. trib.', tot.vTotTrib),
+    v('Valor do COFINS', tot.vCOFINS),
+    v('Valor total da nota', tot.vNF),
   ]);
+  if (ibsCbs) {
+    const gIBS = (ibsCbs.gIBS ?? {}) as No;
+    d.linhaCampos([
+      v('Base de cálc. IBS/CBS', ibsCbs.vBCIBSCBS),
+      v('Valor IBS UF', ((gIBS.gIBSUF ?? {}) as No).vIBSUF),
+      v('Valor IBS mun.', ((gIBS.gIBSMun ?? {}) as No).vIBSMun),
+      v('Valor CBS', ((ibsCbs.gCBS ?? {}) as No).vCBS),
+    ]);
+  }
 
   // ── transportador / volumes ──
   d.titulo('Transportador / Volumes transportados');
   d.linhaCampos([
-    { r: 'Nome / razão social', v: txt(transporta.xNome).toUpperCase(), p: 3.4 },
-    { r: 'Frete por conta', v: MOD_FRETE[txt(transp.modFrete)] ?? txt(transp.modFrete), p: 1.9 },
-    { r: 'Código ANTT', v: txt(veiculo.RNTC), p: 1.3 },
-    { r: 'Placa do veículo', v: txt(veiculo.placa), p: 1.3 },
-    { r: 'UF', v: txt(veiculo.UF), p: 0.5 },
-    { r: 'CNPJ / CPF', v: cnpjCpf(transporta.CNPJ ?? transporta.CPF), p: 2 },
+    { r: 'Razão social', v: txt(transporta.xNome), p: 370 },
+    { r: 'Frete', v: MOD_FRETE[txt(transp.modFrete)] ?? txt(transp.modFrete), p: 115 },
+    { r: 'Código ANTT', v: txt(veiculo.RNTC), p: 120 },
+    { r: 'Placa do veículo', v: txt(veiculo.placa), p: 115 },
+    { r: 'UF', v: txt(veiculo.UF), p: 30, a: 'centro' },
+    { r: 'CNPJ / CPF', v: cnpjCpf(transporta.CNPJ ?? transporta.CPF), p: 150, a: 'dir' },
   ]);
   d.linhaCampos([
-    { r: 'Endereço', v: txt(transporta.xEnder).toUpperCase(), p: 4.5 },
-    { r: 'Município', v: txt(transporta.xMun).toUpperCase(), p: 3.1 },
-    { r: 'UF', v: txt(transporta.UF), p: 0.5 },
-    { r: 'Inscrição estadual', v: txt(transporta.IE), p: 2.3 },
+    { r: 'Endereço', v: txt(transporta.xEnder), p: 485 },
+    { r: 'Município', v: txt(transporta.xMun), p: 235 },
+    { r: 'UF', v: txt(transporta.UF), p: 30, a: 'centro' },
+    { r: 'Inscrição estadual', v: txt(transporta.IE), p: 150, a: 'dir' },
   ]);
-  const somaVol = (campo: string) => volumes.reduce((s, v) => s + num(v[campo]), 0);
-  const primeiroVol = (campo: string) => txt(volumes.find((v) => v[campo])?.[campo]);
+  const somaVol = (campo: string) => volumes.reduce((s, x) => s + num(x[campo]), 0);
+  const primeiroVol = (campo: string) => txt(volumes.find((x) => x[campo])?.[campo]);
   d.linhaCampos([
-    { r: 'Quantidade', v: volumes.length ? String(somaVol('qVol') || '') : '', p: 1 },
-    { r: 'Espécie', v: primeiroVol('esp').toUpperCase(), p: 1.3 },
-    { r: 'Marca', v: primeiroVol('marca').toUpperCase(), p: 1.3 },
-    { r: 'Numeração', v: primeiroVol('nVol'), p: 1.3 },
-    { r: 'Peso bruto', v: volumes.length ? decimal(somaVol('pesoB'), 3) : '', p: 1.3, a: 'dir' },
-    { r: 'Peso líquido', v: volumes.length ? decimal(somaVol('pesoL'), 3) : '', p: 1.3, a: 'dir' },
+    { r: 'Quantidade', v: volumes.length ? decimal(somaVol('qVol'), 3) : '', p: 70, a: 'dir' },
+    { r: 'Espécie', v: primeiroVol('esp'), p: 205 },
+    { r: 'Marca', v: primeiroVol('marca'), p: 210 },
+    { r: 'Numeração', v: primeiroVol('nVol'), p: 120 },
+    { r: 'Peso bruto', v: volumes.length ? decimal(somaVol('pesoB'), 3) : '', p: 145, a: 'dir' },
+    { r: 'Peso líquido', v: volumes.length ? decimal(somaVol('pesoL'), 3) : '', p: 150, a: 'dir' },
   ]);
+
+  // ── dados adicionais (pé da 1ª folha) ──
+  const adicional = textoAdicional(inf, ide, dest, tot);
+  const wCompl = (W * 620) / 900;
+  const linhasCompl = d.paragrafos(adicional, 8, wCompl - 6);
+  const hAdic = Math.max(92, 12 + linhasCompl.length * 8.6);
+  const fundoFolha1 = A4.h - M - 10 - hAdic - 8; // 8 = título "DADOS ADICIONAIS"
+  const fundoOutras = A4.h - M - 10;
 
   // ── produtos ──
-  const fixas = [
-    { t: 'Código produto', w: 42 },
-    { t: 'Descrição do produto / serviço', w: 0 },
-    { t: 'NCM/SH', w: 36 },
-    { t: 'O/CST', w: 22 },
-    { t: 'CFOP', w: 22 },
-    { t: 'UN', w: 18 },
-    { t: 'Quant', w: 36, dir: true },
-    { t: 'Valor unit', w: 44, dir: true },
-    { t: 'Valor total', w: 46, dir: true },
-    { t: 'B.Cálc ICMS', w: 40, dir: true },
-    { t: 'Valor ICMS', w: 36, dir: true },
+  const cols = [
+    { t: 'Código produto', w: 75 },
+    { t: 'Descrição do produto / serviço', w: 333 },
+    { t: 'NCM/SH', w: 45 },
+    { t: 'O/CST', w: 33 },
+    { t: 'CFOP', w: 30 },
+    { t: 'UN', w: 24 },
+    { t: 'Quanti.', w: 53, dir: true },
+    { t: 'Valor unit.', w: 55, dir: true },
+    { t: 'Valor total', w: 55, dir: true },
+    { t: 'B cálc ICMS', w: 55, dir: true },
+    { t: 'Valor ICMS', w: 50, dir: true },
     { t: 'Valor IPI', w: 32, dir: true },
-    { t: 'Alíq. ICMS', w: 22, dir: true },
-    { t: 'Alíq. IPI', w: 22, dir: true },
-  ];
-  fixas[1].w = W - fixas.reduce((s, c) => s + c.w, 0);
-  const colunasX = fixas.reduce<number[]>((xs, c, i) => [...xs, i === 0 ? M : xs[i - 1] + fixas[i - 1].w], []);
+    { t: 'Aliq. ICMS', w: 30, dir: true },
+    { t: 'Aliq. IPI', w: 30, dir: true },
+  ].map((c) => ({ ...c, w: (c.w * W) / 900 }));
+  const colX = cols.reduce<number[]>((xs, c, i) => [...xs, i === 0 ? M : xs[i - 1] + cols[i - 1].w], []);
+  const wDesc = cols[1].w - 4;
 
   let inicioTabela = 0;
-  const cabecalhoProdutos = () => {
+  let fundoTabela = fundoFolha1;
+  const cabecalhoProdutos = (fundo: number) => {
     d.titulo('Dados dos produtos / serviços');
     inicioTabela = d.t;
+    fundoTabela = fundo;
     d.caixa(M, d.t, W, 16);
-    fixas.forEach((c, i) => {
-      const linhas = d.quebrar(c.t.toUpperCase(), 5, c.w - 3);
-      linhas.slice(0, 2).forEach((l, j) => d.texto(l, colunasX[i] + 1.5, d.t + (linhas.length > 1 ? 6.5 : 9.5) + j * 6, 5, d.f, c.w - 3, 'centro'));
+    cols.forEach((c, i) => {
+      const linhas = d.quebrar(c.t.toUpperCase(), 5.4, c.w - 2);
+      linhas.slice(0, 2).forEach((l, j) => d.texto(l, colX[i] + 1, d.t + (linhas.length > 1 ? 6.5 : 9.5) + j * 6, 5.4, d.f, c.w - 2, 'centro'));
     });
     d.t += 16;
   };
   const fecharTabela = () => {
-    d.caixa(M, inicioTabela, W, d.t - inicioTabela);
-    for (const x of colunasX.slice(1)) d.linha(x, inicioTabela, x, d.t);
+    d.caixa(M, inicioTabela, W, fundoTabela - inicioTabela);
+    for (const x of colX.slice(1)) d.linha(x, inicioTabela, x, fundoTabela);
   };
 
-  cabecalhoProdutos();
-  for (const it of itens) {
+  cabecalhoProdutos(fundoFolha1);
+  itens.forEach((it, n) => {
     const p = it.prod ?? {};
     const imposto = (it.imposto ?? {}) as No;
     const icms = (Object.values((imposto.ICMS ?? {}) as No)[0] ?? {}) as No;
-    const ipi = (((imposto.IPI ?? {}) as No).IPITrib ?? {}) as No;
-    const descricao = [txt(p.xProd), txt(it.infAdProd)].filter(Boolean).join(' ');
-    const linhasDesc = d.quebrar(descricao, 6.3, fixas[1].w - 4).slice(0, 40);
-    const h = 4 + linhasDesc.length * 7.5;
-    if (!d.cabe(h)) {
+    const ipi = (((imposto.IPI ?? {}) as No).IPITrib ?? null) as No | null;
+    const linhasDesc = d.quebrar(txt(p.xProd), 6.6, wDesc);
+    const linhasAd = it.infAdProd ? d.paragrafos(txt(it.infAdProd), 5.6, wDesc) : [];
+    const h = 3 + linhasDesc.length * 7 + linhasAd.length * 6 + 2;
+    if (d.t + h > fundoTabela) {
       fecharTabela();
       d.nova();
       cabecalho();
-      cabecalhoProdutos();
+      cabecalhoProdutos(fundoOutras);
     }
     const valores = [
       txt(p.cProd),
       '',
       txt(p.NCM),
       `${txt(icms.orig)}${txt(icms.CST ?? icms.CSOSN)}`,
-      txt(p.CFOP),
+      cfop(p.CFOP),
       txt(p.uCom),
-      decimal(p.qCom, 4),
+      decimal(p.qCom, 2, 4),
       decimal(p.vUnCom, 2, 4),
       decimal(p.vProd),
-      decimal(icms.vBC),
-      decimal(icms.vICMS),
-      decimal(ipi.vIPI),
-      decimal(icms.pICMS),
-      decimal(ipi.pIPI),
+      decimalSe(icms.vBC),
+      decimalSe(icms.vICMS),
+      ipi ? decimalSe(ipi.vIPI) : '',
+      decimalSe(icms.pICMS),
+      ipi ? decimalSe(ipi.pIPI) : '',
     ];
-    fixas.forEach((c, i) => {
-      if (i === 1) linhasDesc.forEach((l, j) => d.texto(l, colunasX[i] + 2, d.t + 7.5 + j * 7.5, 6.3));
-      else d.texto(valores[i], colunasX[i] + 1.5, d.t + 7.5, 6.3, d.f, c.w - 3, c.dir ? 'dir' : 'centro');
+    cols.forEach((c, i) => {
+      if (i === 1) {
+        linhasDesc.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 7.5 + j * 7, 6.6));
+        linhasAd.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 7.5 + linhasDesc.length * 7 + j * 6 - 1, 5.6));
+      } else {
+        d.texto(valores[i], colX[i] + 1.5, d.t + 7.5, 6.6, d.f, c.w - 3, c.dir ? 'dir' : 'centro');
+      }
     });
     d.t += h;
-  }
+    if (n < itens.length - 1 && d.t < fundoTabela) d.linha(M, d.t, M + W, d.t, true);
+  });
   fecharTabela();
 
-  // ── dados adicionais ──
-  // quebras de linha do texto original são mantidas (cada parágrafo quebra na largura do quadro)
-  const complementares = opcoes.infCpl?.trim() ? opcoes.infCpl : txt(infAdic.infCpl);
-  const fisco = txt(infAdic.infAdFisco);
-  const wCompl = W * 0.68;
-  const linhasCompl = complementares
-    .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .flatMap((l) => d.quebrar(l, 6.3, wCompl - 6));
-  const linhasFisco = d.quebrar(fisco, 6.3, W - wCompl - 6);
-  let feitas = 0;
-  while (feitas < linhasCompl.length || feitas === 0) {
-    if (!d.cabe(11 + 40)) {
-      d.nova();
-      cabecalho();
-    }
-    d.t += 3;
-    d.titulo('Dados adicionais');
-    const cabem = Math.max(4, Math.floor((A4.h - M - 8 - d.t - 12) / 7.5));
-    const parte = linhasCompl.slice(feitas, feitas + cabem);
-    const h = Math.max(60, 12 + Math.max(parte.length, feitas === 0 ? linhasFisco.length : 0) * 7.5);
-    d.campo(M, d.t, wCompl, h, 'Informações complementares', '');
-    parte.forEach((l, i) => d.texto(l, M + 3, d.t + 14 + i * 7.5, 6.3));
-    d.campo(M + wCompl, d.t, W - wCompl, h, 'Reservado ao fisco', '');
-    if (feitas === 0) linhasFisco.forEach((l, i) => d.texto(l, M + wCompl + 3, d.t + 14 + i * 7.5, 6.3));
-    d.t += h;
-    feitas += Math.max(parte.length, 1);
-  }
+  // dados adicionais no pé da 1ª folha
+  const pag1 = pdf.getPage(0);
+  const atual = d.page;
+  d.page = pag1;
+  d.t = fundoFolha1 + 2;
+  d.titulo('Dados adicionais');
+  d.campo(M, d.t, wCompl, hAdic, 'Informações complementares', '');
+  linhasCompl.forEach((l, i) => d.texto(l, M + 2, d.t + 13 + i * 8.6, 8));
+  d.campo(M + wCompl, d.t, W - wCompl, hAdic, 'Reservado ao fisco', '');
+  d.page = atual;
 
-  // numeração das folhas e rodapé
+  // numeração das folhas
   folhas.forEach((fl, i) => {
-    fl.page.drawText(`Folha ${i + 1}/${folhas.length}`, {
-      x: fl.x + (fl.w - d.fi.widthOfTextAtSize(`Folha ${i + 1}/${folhas.length}`, 7)) / 2,
-      y: A4.h - fl.topo,
-      size: 7,
-      font: d.fi,
-      color: PRETO,
-    });
-    fl.page.drawText('DANFE gerado pelo Natuhair a partir do XML autorizado.', {
-      x: M,
-      y: M - 6,
-      size: 5.5,
-      font: d.f,
-      color: rgb(0.4, 0.4, 0.4),
-    });
+    const s = `Folha ${i + 1}/${folhas.length}`;
+    fl.page.drawText(s, { x: fl.x + (fl.w - d.fb.widthOfTextAtSize(s, 9)) / 2, y: A4.h - fl.topo, size: 9, font: d.fb, color: PRETO });
   });
 
   return pdf.save();

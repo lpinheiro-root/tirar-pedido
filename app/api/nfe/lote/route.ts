@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { requireNfe } from '@/lib/auth';
 import { gerarDanfePdf } from '@/lib/cartao/danfePdf';
-import { limparChave, textoAdicionalEmitida } from '@/lib/nfe/dados';
+import { limparChave } from '@/lib/nfe/dados';
 import { obterXml } from '@/lib/nfe/xml';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     if (formato !== 'danfe') zip.file(`${nome}.xml`, achado.xml);
     if (formato !== 'xml') {
       try {
-        zip.file(`${nome}.pdf`, await gerarDanfePdf(achado.xml, chave, { infCpl: achado.origem === 'erp' ? await textoAdicionalEmitida(chave) : null }));
+        zip.file(`${nome}.pdf`, await gerarDanfePdf(achado.xml, chave));
       } catch (e) {
         console.error('[nfe/lote] danfe', chave, e);
         faltando.push(`${chave} (DANFE)`);
