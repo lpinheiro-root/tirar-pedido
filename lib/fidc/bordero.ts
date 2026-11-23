@@ -23,6 +23,8 @@ export interface Bordero {
   tipo: string;
   cedenteNome: string;
   cedenteCnpj: string;
+  /** Telefone do cedente (o DDD diz a filial da Veneza). */
+  cedenteTelefone: string;
   numero: string;
   data: string; // AAAA-MM-DD
   qtdTitulos: number;
@@ -107,7 +109,8 @@ export function lerBordero(linhas: Linha[]): Bordero {
   const tipo = (campoDaLinha(linhas, /^Tipo:$/) ?? []).join(' ').trim();
   const cedenteNome = (campoDaLinha(linhas, /^Nome:$/) ?? []).join(' ').replace(/\s+/g, ' ').trim();
   const cedenteCnpj = (campoDaLinha(linhas, /^CNPJ:$/) ?? []).find((t) => CNPJ.test(t)) ?? '';
-  const linhaNumero = campoDaLinha(linhas, /^Border[ôo] Número:$/) ?? [];
+  const cedenteTelefone = (campoDaLinha(linhas, /^Telefone:$/) ?? []).join(' ').trim();
+  const linhaNumero =campoDaLinha(linhas, /^Border[ôo] Número:$/) ?? [];
   const numero = linhaNumero[0] && !/:$/.test(linhaNumero[0]) ? linhaNumero[0] : '';
   const iData = linhaNumero.findIndex((t) => /^Data:$/.test(t));
   const data = iData >= 0 ? iso(linhaNumero[iData + 1] ?? '') : null;
@@ -117,7 +120,8 @@ export function lerBordero(linhas: Linha[]): Bordero {
 
   const titulos: TituloBordero[] = [];
   for (const l of linhas) {
-    if (!/^\d+-\d+$/.test(l[0] ?? '') || !DATA.test(l[1] ?? '')) continue;
+    // número do título: "12345-1" (Amplic, Crescer, Lecca) ou só "844601" (Goal)
+    if (!/^\d+(-\d+)?$/.test(l[0] ?? '') || !DATA.test(l[1] ?? '')) continue;
     const iValor = l.findIndex((t, i) => i >= 2 && MOEDA.test(t));
     const moedas = l.filter((t, i) => i > iValor && MOEDA.test(t));
     if (iValor < 0 || moedas.length < 3) continue;
@@ -167,6 +171,7 @@ export function lerBordero(linhas: Linha[]): Bordero {
     tipo,
     cedenteNome,
     cedenteCnpj,
+    cedenteTelefone,
     numero,
     data,
     qtdTitulos,

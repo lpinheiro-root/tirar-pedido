@@ -70,7 +70,7 @@ export async function POST(request: Request) {
         if (error) throw new Error(/fidc_cedentes/.test(error.message) ? SQL : error.message);
         empresa = data?.empresa ?? null;
       }
-      empresa ??= empresaDoCedente(b.cedenteNome);
+      empresa ??= empresaDoCedente(b.cedenteNome, b.cedenteTelefone);
       if (!fidc || !empresa) {
         resultados.push({
           arquivo,

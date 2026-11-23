@@ -148,13 +148,20 @@ export function fidcDoBordero(nome: string): string | null {
   return fidcDe(palavras.join(''));
 }
 
+/** Filial da Veneza pelo DDD do telefone do cedente no borderô. */
+const VENEZA_POR_DDD: Record<string, string> = { '21': 'Veneza RJ', '11': 'Veneza SP', '81': 'Veneza PE', '51': 'Veneza RS', '31': 'Veneza MG' };
+
 /**
- * Empresa pelo nome do cedente no borderô. Só as que não têm filial; Veneza depende do CNPJ
- * (a filial), então volta null e a pessoa escolhe uma vez.
+ * Empresa pelo nome do cedente no borderô. A Veneza tem filiais: a filial sai do DDD do telefone
+ * do cedente; se não der, volta null e a pessoa escolhe uma vez (fica guardado pelo CNPJ).
  */
-export function empresaDoCedente(nome: string): string | null {
+export function empresaDoCedente(nome: string, telefone = ''): string | null {
   const s = limpar(nome);
   for (const [padrao, re] of EMPRESAS.slice(0, 5)) if (re.test(s)) return padrao;
+  if (/\bVENEZA\b/.test(s)) {
+    const ddd = telefone.match(/\(\s*(\d{2})\s*\)/)?.[1] ?? '';
+    return VENEZA_POR_DDD[ddd] ?? null;
+  }
   return null;
 }
 
