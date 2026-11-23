@@ -287,11 +287,14 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
     // emitente
     d.caixa(M, topo, wEmit, h);
     d.texto('IDENTIFICAÇÃO DO EMITENTE', M, topo + 6.5, 5.5, d.f, wEmit, 'centro');
-    const nome = d.quebrar(txt(emit.xNome), 10.5, wEmit - 8, d.fb).slice(0, 2);
+    // nome numa linha só (como o ORGM), diminuindo a fonte até 8,5; se não couber, quebra
+    let tamNome = 10.5;
+    while (tamNome > 8.5 && d.fb.widthOfTextAtSize(limpar(txt(emit.xNome)), tamNome) > wEmit - 8) tamNome -= 0.25;
+    const nome = d.quebrar(txt(emit.xNome), tamNome, wEmit - 8, d.fb).slice(0, 2);
     let ty = topo + 32 - (nome.length - 1) * 5.5;
     for (const l of nome) {
-      d.texto(l, M + 4, ty, 10.5, d.fb, wEmit - 8, 'centro');
-      ty += 10.5;
+      d.texto(l, M + 4, ty, tamNome, d.fb, wEmit - 8, 'centro');
+      ty += tamNome;
     }
     const linha1 = `${[txt(ender.xLgr), txt(ender.nro)].filter(Boolean).join(', ')}${ender.xCpl ? ` - ${txt(ender.xCpl)}` : ''}`;
     const linha2 = [txt(ender.xBairro), ender.CEP ? `CEP: ${cep(ender.CEP)}` : ''].filter(Boolean).join(' - ');
@@ -389,8 +392,8 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
       const x = M + (i % porLinha) * wDup;
       const y = d.t + Math.floor(i / porLinha) * hLinha;
       const par = (rotulo: string, valor: string, yy: number) => {
-        d.texto(rotulo, x + 2, yy, 6.6);
-        d.texto(valor, x + 2, yy, 6.6, d.fb, wDup - 6, 'dir');
+        d.texto(rotulo, x + 2, yy, 5.8);
+        d.texto(valor, x + 2 + d.f.widthOfTextAtSize(rotulo, 5.8) + 2, yy, 6.2, d.fb, wDup - 6 - d.f.widthOfTextAtSize(rotulo, 5.8) - 2, 'dir');
       };
       par('Número', txt(dup.nDup), y + 7);
       par('Vencimento:', dataDia(dup.dVenc), y + 14.5);
@@ -513,9 +516,9 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
     const imposto = (it.imposto ?? {}) as No;
     const icms = (Object.values((imposto.ICMS ?? {}) as No)[0] ?? {}) as No;
     const ipi = (((imposto.IPI ?? {}) as No).IPITrib ?? null) as No | null;
-    const linhasDesc = d.quebrar(txt(p.xProd), 6.6, wDesc);
-    const linhasAd = it.infAdProd ? d.paragrafos(txt(it.infAdProd), 5.6, wDesc) : [];
-    const h = 3 + linhasDesc.length * 7 + linhasAd.length * 6 + 2;
+    const linhasDesc = d.quebrar(txt(p.xProd), 6.2, wDesc);
+    const linhasAd = it.infAdProd ? d.paragrafos(txt(it.infAdProd), 5.2, wDesc) : [];
+    const h = 2 + linhasDesc.length * 6.4 + linhasAd.length * 5.4 + 1.8;
     if (d.t + h > fundoTabela) {
       fecharTabela();
       d.nova();
@@ -540,10 +543,10 @@ export async function gerarDanfePdf(xml: string, chave: string): Promise<Uint8Ar
     ];
     cols.forEach((c, i) => {
       if (i === 1) {
-        linhasDesc.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 7.5 + j * 7, 6.6));
-        linhasAd.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 7.5 + linhasDesc.length * 7 + j * 6 - 1, 5.6));
+        linhasDesc.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 6.6 + j * 6.4, 6.2));
+        linhasAd.forEach((l, j) => d.texto(l, colX[i] + 2, d.t + 6.6 + linhasDesc.length * 6.4 + j * 5.4 - 0.8, 5.2));
       } else {
-        d.texto(valores[i], colX[i] + 1.5, d.t + 7.5, 6.6, d.f, c.w - 3, c.dir ? 'dir' : 'centro');
+        d.texto(valores[i], colX[i] + 1.5, d.t + 6.6, 6.2, d.f, c.w - 3, c.dir ? 'dir' : 'centro');
       }
     });
     d.t += h;
