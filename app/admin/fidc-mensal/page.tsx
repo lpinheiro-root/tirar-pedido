@@ -1,4 +1,4 @@
-import { requireFidc } from '@/lib/auth';
+import { requireFidcMensal } from '@/lib/auth';
 import { PageHeading } from '@/components/layout/Header';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { buscarTodas } from '@/lib/supabasePaginado';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 /** Mensal FIDC: risco (a vencer / vencidos) por empresa e FIDC, mês a mês, da planilha RISCO do financeiro. */
 export default async function FidcMensalPage() {
-  await requireFidc();
+  await requireFidcMensal();
   const db = createServiceRoleClient();
   const num = (v: unknown) => Number(v) || 0;
 

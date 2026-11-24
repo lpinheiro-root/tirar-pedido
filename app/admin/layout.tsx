@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       : []),
     ...(acesso.nfe ? [{ href: '/admin/nfe', label: 'NFE', icon: <IconDocument /> }] : []),
     ...(acesso.fidc ? [{ href: '/admin/fidc', label: 'FIDC', icon: <IconBank /> }] : []),
-    ...(acesso.fidc ? [{ href: '/admin/fidc-mensal', label: 'Mensal FIDC', icon: <IconChart /> }] : []),
+    ...(acesso.fidcMensal ? [{ href: '/admin/fidc-mensal', label: 'Mensal FIDC', icon: <IconChart /> }] : []),
     ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),
   ];
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireFidc } from '@/lib/auth';
+import { requireFidcMensal } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { lerAbasXlsx } from '@/lib/fidc/lerXlsx';
 import { lerRisco } from '@/lib/fidc/risco';
@@ -17,7 +17,7 @@ const SQL = 'Falta rodar o supabase/fidc_risco.sql no Supabase.';
  * substitui o que estava (não duplica).
  */
 export async function POST(request: Request) {
-  const { representante } = await requireFidc();
+  const { representante } = await requireFidcMensal();
   const form = await request.formData();
   const arquivo = form.get('planilha');
   const mesEscolhido = String(form.get('mes') ?? '').trim();

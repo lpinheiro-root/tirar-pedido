@@ -20,6 +20,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
     contasPagar: Boolean(usuario.acesso_contas_pagar),
     nfe: Boolean(usuario.acesso_nfe),
     fidc: Boolean(usuario.acesso_fidc),
+    fidcMensal: Boolean(usuario.acesso_fidc_mensal),
   };
 
   async function salvarSenha() {
@@ -68,6 +69,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
                   ['contas_pagar', 'Contas a Pagar', acesso.contasPagar],
                   ['nfe', 'NFE', acesso.nfe],
                   ['fidc', 'FIDC', acesso.fidc],
+                  ['fidc_mensal', 'Mensal FIDC', acesso.fidcMensal],
                 ] as const
               ).map(([tela, rotulo, marcado]) => (
                 <label key={tela} className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">

@@ -34,10 +34,11 @@ export async function criarUsuario(
   const acessoContasPagar = formData.get('acesso_contas_pagar') === 'on';
   const acessoNfe = formData.get('acesso_nfe') === 'on';
   const acessoFidc = formData.get('acesso_fidc') === 'on';
+  const acessoFidcMensal = formData.get('acesso_fidc_mensal') === 'on';
 
   if (!nome || !email) return { erro: 'Preencha nome e e-mail.' };
-  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce && !acessoContasPagar && !acessoNfe && !acessoFidc) {
-    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar, NFE ou FIDC.' };
+  if (!acessoCartao && !acessoDevolucoes && !acessoEcommerce && !acessoContasPagar && !acessoNfe && !acessoFidc && !acessoFidcMensal) {
+    return { erro: 'Marque pelo menos um acesso: Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar, NFE, FIDC ou Mensal FIDC.' };
   }
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
   if (senha !== confirmacao) return { erro: 'A confirmação não confere com a senha.' };
@@ -66,6 +67,8 @@ export async function criarUsuario(
     ...(acessoNfe ? { acesso_nfe: true } : {}),
     // a coluna só existe depois do supabase/fidc.sql
     ...(acessoFidc ? { acesso_fidc: true } : {}),
+    // a coluna só existe depois do supabase/acesso_fidc_mensal.sql
+    ...(acessoFidcMensal ? { acesso_fidc_mensal: true } : {}),
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
@@ -74,6 +77,9 @@ export async function criarUsuario(
     }
     if (erroInsert.message.includes('acesso_nfe')) {
       return { erro: 'Falta rodar o supabase/acesso_nfe.sql no Supabase para liberar a NFE.' };
+    }
+    if (erroInsert.message.includes('acesso_fidc_mensal')) {
+      return { erro: 'Falta rodar o supabase/acesso_fidc_mensal.sql no Supabase para liberar o Mensal FIDC.' };
     }
     if (erroInsert.message.includes('acesso_fidc')) {
       return { erro: 'Falta rodar o supabase/fidc.sql no Supabase para liberar a FIDC.' };
@@ -105,7 +111,7 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
 /** Libera ou retira o acesso a uma tela: Cartão ou NF-e Recebidas (controle de devoluções). */
 export async function alternarAcesso(
   id: string,
-  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe' | 'fidc',
+  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe' | 'fidc' | 'fidc_mensal',
   acesso: boolean
 ): Promise<{ erro?: string }> {
   await requireSuperAdmin();

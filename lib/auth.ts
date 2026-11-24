@@ -59,6 +59,7 @@ export function acessos(r: Representante) {
     contasPagar: Boolean(r.super_admin) || Boolean(r.acesso_contas_pagar),
     nfe: Boolean(r.super_admin) || Boolean(r.acesso_nfe),
     fidc: Boolean(r.super_admin) || Boolean(r.acesso_fidc),
+    fidcMensal: Boolean(r.super_admin) || Boolean(r.acesso_fidc_mensal),
   };
 }
 
@@ -70,7 +71,15 @@ export function telaInicial(r: Representante) {
   if (a.ecommerce) return '/admin/ecommerce';
   if (a.contasPagar) return '/admin/contas-pagar';
   if (a.nfe) return '/admin/nfe';
-  return a.fidc ? '/admin/fidc' : '/admin/conta';
+  if (a.fidc) return '/admin/fidc';
+  return a.fidcMensal ? '/admin/fidc-mensal' : '/admin/conta';
+}
+
+/** Mensal FIDC (risco do mês): super admin ou usuário com acesso liberado. */
+export async function requireFidcMensal() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).fidcMensal) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** FIDC (operações de antecipação): super admin ou usuário com acesso liberado. */

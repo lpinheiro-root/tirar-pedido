@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import ExcelJS from 'exceljs';
-import { requireFidc } from '@/lib/auth';
+import { requireFidcMensal } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { NOMES_MES, ordemEmpresa, ordemFidc } from '@/lib/fidc/riscoOrdem';
 
@@ -133,7 +133,7 @@ function base(wb: ExcelJS.Workbook, linhas: Linha[], dataPosicao: string | null)
 
 /** Exporta o mês (?mes=AAAA-MM) no mesmo modelo da planilha RISCO GERAL OPERAÇÕES FIDCs. */
 export async function GET(request: Request) {
-  await requireFidc();
+  await requireFidcMensal();
   const mes = new URL(request.url).searchParams.get('mes') ?? '';
   if (!/^\d{4}-\d{2}$/.test(mes)) return new Response('Escolha o mês.', { status: 400 });
   const db = createServiceRoleClient();
