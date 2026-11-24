@@ -13,7 +13,12 @@ export interface RespostaCarteira {
   erro?: string;
 }
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const msg = (e: unknown) => {
+  const m = e instanceof Error ? e.message : String(e);
+  return /ECONNREFUSED|ETIMEOUT|ESOCKET|ECONNRESET|Failed to connect|Connection lost|login failed/i.test(m)
+    ? 'Sem conexão com o ORGM agora.'
+    : m;
+};
 
 async function conferir(id: number) {
   const db = createServiceRoleClient();
@@ -58,9 +63,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({ resumos } satisfies RespostaCarteira);
   } catch (e) {
-    const m = msg(e);
-    const semErp = /ECONNREFUSED|ETIMEOUT|ESOCKET|Failed to connect|login failed/i.test(m);
-    return NextResponse.json({ erro: semErp ? 'Não consegui falar com o ORGM agora. Tente de novo em instantes.' : m } satisfies RespostaCarteira, {
+    return NextResponse.json({ erro: msg(e) } satisfies RespostaCarteira, {
       status: 500,
     });
   }

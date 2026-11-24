@@ -43,9 +43,24 @@ function Selo({ s }: { s: Situacao }) {
   );
 }
 
-function SeloResumo({ r }: { r: Resumo | undefined }) {
+function SeloResumo({ r, onTentar }: { r: Resumo | undefined; onTentar: () => void }) {
   if (!r) return <span className="text-label text-on-surface-variant">conferindo…</span>;
-  if ('erro' in r) return <span className="text-label text-error">{r.erro}</span>;
+  if ('erro' in r)
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2 text-label text-error">
+        {r.erro}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTentar();
+          }}
+          className="rounded-sm border border-primary px-2 py-0.5 font-medium text-primary hover:bg-primary/5"
+        >
+          Tentar de novo
+        </button>
+      </span>
+    );
   if (!r.total) return <span className="text-label text-on-surface-variant">borderô sem títulos — importe de novo</span>;
   if (r.ok === r.total)
     return (
@@ -188,6 +203,14 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
   const [situacao, setSituacao] = useState<'todos' | 'pendentes' | 'ok'>('todos');
   const [aberto, setAberto] = useState<number | null>(null);
   const [resumos, setResumos] = useState<Record<number, Resumo>>({});
+  const [marcados, setMarcados] = useState<Set<number>>(new Set());
+  const alternar = (id: number) =>
+    setMarcados((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const fidcs = useMemo(() => Array.from(new Set(borderos.map((b) => b.fidc))).sort(), [borderos]);
   const empresas = useMemo(() => Array.from(new Set(borderos.map((b) => b.empresa))).sort(), [borderos]);
@@ -307,10 +330,44 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
       </div>
 
       <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border-muted px-4 py-3">
+          <span className="text-body-sm text-on-surface">
+            {marcados.size ? `${marcados.size} borderô${marcados.size === 1 ? '' : 's'} selecionado${marcados.size === 1 ? '' : 's'}` : 'Marque os borderôs para baixar'}
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => setMarcados(new Set(visiveis.map((b) => b.id)))} disabled={!visiveis.length}>
+            Selecionar todos da lista ({visiveis.length})
+          </Button>
+          {marcados.size > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setMarcados(new Set())}>
+              Limpar seleção
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => setResumos({})} title="Confere de novo no ORGM todos os borderôs da lista">
+            Conferir tudo de novo
+          </Button>
+          <a
+            href={marcados.size ? `/api/fidc/carteira/exportar?ids=${Array.from(marcados).join(',')}` : undefined}
+            aria-disabled={!marcados.size}
+            className={`ml-auto inline-flex h-9 items-center rounded-md px-3 text-body-sm font-medium ${
+              marcados.size ? 'bg-primary text-on-primary hover:bg-primary/90' : 'pointer-events-none bg-primary/40 text-on-primary'
+            }`}
+          >
+            Baixar Excel dos selecionados
+          </a>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-body-sm">
             <thead>
               <tr className="text-label uppercase text-on-surface-variant">
+                <th className="w-10 px-4 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Selecionar todos"
+                    className="h-4 w-4 accent-primary"
+                    checked={visiveis.length > 0 && visiveis.every((b) => marcados.has(b.id))}
+                    onChange={(e) => setMarcados(e.target.checked ? new Set(visiveis.map((b) => b.id)) : new Set())}
+                  />
+                </th>
                 <th className="px-4 py-2 text-left font-medium">Data</th>
                 <th className="px-4 py-2 text-left font-medium">FIDC · Empresa</th>
                 <th className="px-4 py-2 text-left font-medium">Borderô</th>
@@ -324,6 +381,15 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
               {visiveis.map((b) => (
                 <Fragment key={b.id}>
                   <tr className="cursor-pointer border-t border-border-muted hover:bg-primary/5" onClick={() => setAberto(aberto === b.id ? null : b.id)}>
+                    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecionar borderô ${b.numero}`}
+                        className="h-4 w-4 accent-primary"
+                        checked={marcados.has(b.id)}
+                        onChange={() => alternar(b.id)}
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2 tabular-nums">
                       <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === b.id ? '▾' : '▸'}</span>
                       {br(b.data)}
@@ -335,13 +401,22 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
                     <td className="px-4 py-2 text-right tabular-nums">{b.qtd_titulos}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{moeda(b.bruto)}</td>
                     <td className="px-4 py-2">
-                      <SeloResumo r={resumos[b.id]} />
+                      <SeloResumo
+                        r={resumos[b.id]}
+                        onTentar={() =>
+                          setResumos((x) => {
+                            const n = { ...x };
+                            delete n[b.id];
+                            return n;
+                          })
+                        }
+                      />
                     </td>
                     <td className="px-4 py-2 text-on-surface-variant">{b.usuario_nome ?? '—'}</td>
                   </tr>
                   {aberto === b.id && (
                     <tr className="bg-surface-container-low/60">
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <Detalhe id={b.id} onResumo={(r) => setResumos((x) => ({ ...x, [b.id]: r }))} />
                       </td>
                     </tr>
@@ -350,7 +425,7 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
               ))}
               {!visiveis.length && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-on-surface-variant">
+                  <td colSpan={8} className="px-4 py-6 text-center text-on-surface-variant">
                     {borderos.length ? 'Nenhum borderô com esse filtro.' : 'Nenhum borderô importado ainda. Clique em “Importar borderô (PDF)”.'}
                   </td>
                 </tr>

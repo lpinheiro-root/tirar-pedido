@@ -97,7 +97,11 @@ export async function conferirTitulos(
 ): Promise<TituloConferido[]> {
   if (!titulos.length) return [];
   const docs = Array.from(new Set(titulos.flatMap((t) => documentosPossiveis(t.numero))));
-  const pool = await getPool();
+  // a conexão com o ORGM às vezes cai por um instante: tenta de novo antes de desistir
+  const pool = await getPool().catch(async () => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return getPool();
+  });
   const linhas: LinhaOrgm[] = [];
   // em blocos para não passar do limite de parâmetros do SQL Server
   for (let i = 0; i < docs.length; i += 500) {
