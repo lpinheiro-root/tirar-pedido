@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireFidc } from '@/lib/auth';
+import { requireFidcOuCarteira } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { lerBordero, linhasDoPdf } from '@/lib/fidc/bordero';
 import { EMPRESAS_CONHECIDAS, FIDCS_CONHECIDAS, empresaDoCedente, fidcDoBordero } from '@/lib/fidc/nomes';
@@ -47,7 +47,7 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * Importar o mesmo borderô de novo atualiza, não duplica.
  */
 export async function POST(request: Request) {
-  const { representante } = await requireFidc();
+  const { representante } = await requireFidcOuCarteira();
   const form = await request.formData();
   const arquivos = form.getAll('arquivos').filter((a): a is File => a instanceof File && a.size > 0);
   const fidcEscolhida = String(form.get('fidc') ?? '').trim();
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
 
 /** Títulos de um borderô (?id=). */
 export async function GET(request: Request) {
-  await requireFidc();
+  await requireFidcOuCarteira();
   const id = Number(new URL(request.url).searchParams.get('id'));
   if (!id) return NextResponse.json({ erro: 'Borderô inválido.' }, { status: 400 });
   const db = createServiceRoleClient();

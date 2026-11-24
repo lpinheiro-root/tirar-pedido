@@ -2,7 +2,7 @@ import { acessos, requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
-import { IconBank, IconCart, IconChart, IconCreditCard, IconDocument, IconReceipt, IconUsers } from '@/components/ui/Icons';
+import { IconBank, IconCart, IconChart, IconCreditCard, IconDocument, IconReceipt, IconUsers, IconWallet } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
@@ -21,6 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ...(acesso.nfe ? [{ href: '/admin/nfe', label: 'NFE', icon: <IconDocument /> }] : []),
     ...(acesso.fidc ? [{ href: '/admin/fidc', label: 'FIDC', icon: <IconBank /> }] : []),
     ...(acesso.fidcMensal ? [{ href: '/admin/fidc-mensal', label: 'Mensal FIDC', icon: <IconChart /> }] : []),
+    ...(acesso.fidcCarteira ? [{ href: '/admin/fidc-carteira', label: 'Carteira FIDC', icon: <IconWallet /> }] : []),
     ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),
   ];
 

@@ -558,7 +558,7 @@ function FidcPorMes({ ops }: { ops: Operacao[] }) {
 const porFidcChave = (o: Operacao) => o.fidc;
 const porEmpresaChave = (o: Operacao) => o.empresa;
 
-function ImportarBordero() {
+export function ImportarBordero() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [arquivos, setArquivos] = useState<Map<string, File>>(new Map());

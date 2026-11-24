@@ -21,6 +21,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
     nfe: Boolean(usuario.acesso_nfe),
     fidc: Boolean(usuario.acesso_fidc),
     fidcMensal: Boolean(usuario.acesso_fidc_mensal),
+    fidcCarteira: Boolean(usuario.acesso_fidc_carteira),
   };
 
   async function salvarSenha() {
@@ -70,6 +71,7 @@ export function UsuarioRow({ usuario, ehVoce }: { usuario: Representante; ehVoce
                   ['nfe', 'NFE', acesso.nfe],
                   ['fidc', 'FIDC', acesso.fidc],
                   ['fidc_mensal', 'Mensal FIDC', acesso.fidcMensal],
+                  ['fidc_carteira', 'Carteira FIDC', acesso.fidcCarteira],
                 ] as const
               ).map(([tela, rotulo, marcado]) => (
                 <label key={tela} className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">

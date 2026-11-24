@@ -55,6 +55,7 @@ export interface Representante {
   /** aba FIDC (operações de antecipação; diretoria e financeiro) */
   acesso_fidc?: boolean;
   acesso_fidc_mensal?: boolean;
+  acesso_fidc_carteira?: boolean;
   criado_em: string;
 }
 

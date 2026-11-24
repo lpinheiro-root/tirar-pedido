@@ -158,6 +158,15 @@ export const IconDocument = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** Carteira (pasta com check): conferência de carteira. */
+export const IconWallet = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M4 7a2 2 0 0 1 2-2h11v4" />
+    <path d="M4 7v11a2 2 0 0 0 2 2h13V9H6a2 2 0 0 1-2-2Z" />
+    <path d="m10 14.5 1.8 1.8 3.7-3.8" />
+  </svg>
+);
+
 export const IconBank = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M3 10 12 4l9 6" />

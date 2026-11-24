@@ -60,6 +60,7 @@ export function acessos(r: Representante) {
     nfe: Boolean(r.super_admin) || Boolean(r.acesso_nfe),
     fidc: Boolean(r.super_admin) || Boolean(r.acesso_fidc),
     fidcMensal: Boolean(r.super_admin) || Boolean(r.acesso_fidc_mensal),
+    fidcCarteira: Boolean(r.super_admin) || Boolean(r.acesso_fidc_carteira),
   };
 }
 
@@ -72,7 +73,23 @@ export function telaInicial(r: Representante) {
   if (a.contasPagar) return '/admin/contas-pagar';
   if (a.nfe) return '/admin/nfe';
   if (a.fidc) return '/admin/fidc';
-  return a.fidcMensal ? '/admin/fidc-mensal' : '/admin/conta';
+  if (a.fidcMensal) return '/admin/fidc-mensal';
+  return a.fidcCarteira ? '/admin/fidc-carteira' : '/admin/conta';
+}
+
+/** Carteira FIDC (borderô × carteira no ORGM): super admin ou usuário com acesso liberado. */
+export async function requireFidcCarteira() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).fidcCarteira) redirect(telaInicial(sessao.representante));
+  return sessao;
+}
+
+/** Importar borderô e ver os títulos: quem tem FIDC ou Carteira FIDC. */
+export async function requireFidcOuCarteira() {
+  const sessao = await requireRepresentante('admin');
+  const a = acessos(sessao.representante);
+  if (!a.fidc && !a.fidcCarteira) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** Mensal FIDC (risco do mês): super admin ou usuário com acesso liberado. */
