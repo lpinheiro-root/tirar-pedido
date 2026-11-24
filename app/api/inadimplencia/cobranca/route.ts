@@ -165,20 +165,59 @@ export async function GET(request: Request) {
     regiao: p.get('regiao') ?? '',
     busca: p.get('busca') ?? '',
   };
+  // ?vendedores=1776,1752,SEM → só esses vendedores (seleção na tela; "SEM" = sem vendedor)
+  const escolhidos = (p.get('vendedores') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (escolhidos.length) f.vendedor = '';
   let ts: TituloVencido[];
   try {
     ts = filtrar(await buscarVencidos(p.get('grupo') === '1'), f);
   } catch (e) {
     return new Response(`Não consegui ler o ORGM: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
   }
+  if (escolhidos.length) ts = ts.filter((x) => escolhidos.includes(x.vendedorCod || 'SEM'));
   if (!ts.length) return new Response('Nenhum título vencido com esse filtro.', { status: 404 });
 
-  // um grupo por vendedor (código), o de maior valor primeiro
+  // um grupo por vendedor (código), em ordem de nome
   const m = new Map<string, TituloVencido[]>();
-  ts.forEach((x) => m.set(x.vendedorCod || x.vendedor, [...(m.get(x.vendedorCod || x.vendedor) ?? []), x]));
+  ts.forEach((x) => m.set(x.vendedorCod || 'SEM', [...(m.get(x.vendedorCod || 'SEM') ?? []), x]));
   const grupos = Array.from(m.values())
     .map((l) => ({ nome: nomeCurto(l[0].vendedor), ts: l }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(/\//g, '.');
+  const alvo = (f.regiao || (escolhidos.length ? 'SELECIONADOS' : 'GERAL')).toUpperCase();
+  const baixar = (buf: ArrayBuffer | Buffer | Uint8Array, nome: string, tipo: string) =>
+    new Response(buf as ArrayBuffer, {
+      headers: {
+        'Content-Type': tipo,
+        'Content-Disposition': `attachment; filename="${semAcento(nome)}"; filename*=UTF-8''${encodeURIComponent(nome)}`,
+      },
+    });
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  // ?formato=zip → um arquivo INAD por vendedor (como a cobrança guarda) + o INAD TOTAL, num .zip
+  if (p.get('formato') === 'zip' && grupos.length > 1) {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    const nomes = new Set<string>();
+    for (const g of grupos) {
+      const wb = new ExcelJS.Workbook();
+      abaVendedor(wb, g.nome, g.ts, new Set());
+      let arq = `INAD ${semAcento(g.nome).replace(/[\\/:*?"<>|]/g, ' ')}`;
+      let i = 2;
+      while (nomes.has(arq)) arq = `INAD ${g.nome} ${i++}`;
+      nomes.add(arq);
+      zip.file(`${arq}.xlsx`, (await wb.xlsx.writeBuffer()) as ArrayBuffer);
+    }
+    const total = new ExcelJS.Workbook();
+    abaFinal(total, `TOTAL DE INADIMPLÊNCIA ${alvo}`, grupos);
+    zip.file(`INAD TOTAL ${semAcento(alvo)}.xlsx`, (await total.xlsx.writeBuffer()) as ArrayBuffer);
+    const buf = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    return baixar(buf, `INAD ${alvo} ${hoje}.zip`, 'application/zip');
+  }
 
   const wb = new ExcelJS.Workbook();
   const usadas = new Set<string>();
@@ -187,19 +226,9 @@ export async function GET(request: Request) {
     abaVendedor(wb, grupos[0].nome, grupos[0].ts, usadas);
     nomeArquivo = `INAD ${grupos[0].nome}`;
   } else {
-    const alvo = (f.regiao || 'GERAL').toUpperCase();
     abaFinal(wb, `TOTAL DE INADIMPLÊNCIA ${alvo}`, grupos);
     grupos.forEach((g) => abaVendedor(wb, g.nome, g.ts, usadas));
     nomeArquivo = `INAD TOTAL ${alvo}`;
   }
-
-  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(/\//g, '.');
-  const nome = `${nomeArquivo} ${hoje}.xlsx`;
-  const buf = await wb.xlsx.writeBuffer();
-  return new Response(buf as ArrayBuffer, {
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${semAcento(nome)}"; filename*=UTF-8''${encodeURIComponent(nome)}`,
-    },
-  });
+  return baixar((await wb.xlsx.writeBuffer()) as ArrayBuffer, `${nomeArquivo} ${hoje}.xlsx`, XLSX);
 }

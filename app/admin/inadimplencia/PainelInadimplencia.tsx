@@ -268,7 +268,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
   // por vendedor (com carteira / recompra / FIDC, como a cobrança separa)
   const porVendedor = useMemo(() => {
     const m = new Map<string, TituloVencido[]>();
-    lista.forEach((t) => m.set(t.vendedorCod || '—', [...(m.get(t.vendedorCod || '—') ?? []), t]));
+    lista.forEach((t) => m.set(t.vendedorCod || 'SEM', [...(m.get(t.vendedorCod || 'SEM') ?? []), t]));
     return Array.from(m.entries())
       .map(([cod, ts]) => ({
         cod,
@@ -298,6 +298,32 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
       .sort((a, b) => b.total - a.total);
   }, [lista]);
   const [verTodosVendedores, setVerTodosVendedores] = useState(false);
+  // seleção de vendedores para baixar de uma vez
+  const [buscaVend, setBuscaVend] = useState('');
+  const [marcadosVend, setMarcadosVend] = useState<Set<string>>(new Set());
+  const normal = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase();
+  const vendVisiveis = porVendedor.filter((v) => !buscaVend.trim() || v.cod.toLowerCase() === buscaVend.trim().toLowerCase() || normal(`${v.cod} ${v.nome}`).includes(normal(buscaVend.trim())));
+  const vendNaTela = buscaVend.trim() || verTodosVendedores ? vendVisiveis : vendVisiveis.slice(0, 15);
+  const alternarVend = (cod: string) =>
+    setMarcadosVend((s) => {
+      const n = new Set(s);
+      if (n.has(cod)) n.delete(cod);
+      else n.add(cod);
+      return n;
+    });
+  const linkSelecionados = (formato: 'abas' | 'zip', cods: string[]) => {
+    const q = new URLSearchParams(params);
+    q.delete('vendedor');
+    q.set('vendedores', cods.join(','));
+    if (formato === 'zip') q.set('formato', 'zip');
+    return `/api/inadimplencia/cobranca?${q.toString()}`;
+  };
+  const selecionados = porVendedor.filter((v) => marcadosVend.has(v.cod));
+  const totalSelecionado = selecionados.reduce((s, v) => s + v.total, 0);
   const botaoBaixar = (href: string, rotulo = 'Baixar planilha') => (
     <a
       href={href}
@@ -561,12 +587,74 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
           <h2 className="text-h2 text-on-surface">Por vendedor ({porVendedor.length})</h2>
-          <span className="text-label text-on-surface-variant">clique no vendedor para filtrar · “Baixar planilha” sai no modelo INAD da cobrança</span>
+          <span className="text-label text-on-surface-variant">marque os vendedores e baixe tudo de uma vez · clique no nome para filtrar a tela</span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-y border-border-muted bg-surface-container-low/60 px-4 py-3">
+          <input
+            value={buscaVend}
+            onChange={(e) => setBuscaVend(e.target.value)}
+            placeholder="Buscar vendedor por código ou nome…"
+            className={`${seletor} w-64`}
+          />
+          <button
+            type="button"
+            onClick={() => setMarcadosVend((s) => new Set([...Array.from(s), ...vendVisiveis.map((v) => v.cod)]))}
+            className="h-9 rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
+          >
+            Marcar {buscaVend.trim() ? `os ${vendVisiveis.length} encontrados` : `todos (${porVendedor.length})`}
+          </button>
+          {marcadosVend.size > 0 && (
+            <button type="button" onClick={() => setMarcadosVend(new Set())} className="h-9 px-2 text-body-sm text-primary">
+              Desmarcar todos
+            </button>
+          )}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="text-body-sm text-on-surface">
+              {selecionados.length
+                ? `${selecionados.length} selecionado${selecionados.length === 1 ? '' : 's'} · ${moeda(totalSelecionado)}`
+                : 'Nenhum vendedor marcado'}
+            </span>
+            <a
+              href={selecionados.length ? linkSelecionados('abas', selecionados.map((v) => v.cod)) : undefined}
+              aria-disabled={!selecionados.length}
+              title="Um arquivo .xlsx: aba FINAL com os totais + uma aba por vendedor"
+              className={`inline-flex h-9 items-center rounded-md px-3 text-body-sm font-medium ${
+                selecionados.length ? 'bg-primary text-on-primary hover:bg-primary/90' : 'pointer-events-none bg-primary/40 text-on-primary'
+              }`}
+            >
+              Baixar em um arquivo (abas)
+            </a>
+            <a
+              href={selecionados.length > 1 ? linkSelecionados('zip', selecionados.map((v) => v.cod)) : undefined}
+              aria-disabled={selecionados.length < 2}
+              title="Um arquivo INAD <VENDEDOR>.xlsx para cada vendedor + INAD TOTAL, juntos num .zip"
+              className={`inline-flex h-9 items-center rounded-md border px-3 text-body-sm font-medium ${
+                selecionados.length > 1 ? 'border-primary text-primary hover:bg-primary/5' : 'pointer-events-none border-outline-variant text-outline'
+              }`}
+            >
+              Baixar arquivos separados (.zip)
+            </a>
+          </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="mt-2 w-full text-body-sm">
+          <table className="w-full text-body-sm">
             <thead>
               <tr className="text-label uppercase text-on-surface-variant">
+                <th className="w-10 px-4 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Marcar todos os vendedores da lista"
+                    className="h-4 w-4 accent-primary"
+                    checked={vendVisiveis.length > 0 && vendVisiveis.every((v) => marcadosVend.has(v.cod))}
+                    onChange={(e) =>
+                      setMarcadosVend((s) => {
+                        const n = new Set(s);
+                        vendVisiveis.forEach((v) => (e.target.checked ? n.add(v.cod) : n.delete(v.cod)));
+                        return n;
+                      })
+                    }
+                  />
+                </th>
                 <th className="px-4 py-2 text-left font-medium">Cód.</th>
                 <th className="px-4 py-2 text-left font-medium">Vendedor</th>
                 <th className="px-4 py-2 text-left font-medium">Região</th>
@@ -579,13 +667,22 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
               </tr>
             </thead>
             <tbody>
-              {(verTodosVendedores ? porVendedor : porVendedor.slice(0, 15)).map((v) => (
+              {vendNaTela.map((v) => (
                 <tr
                   key={v.cod}
-                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.vendedor === v.cod ? 'bg-primary/10' : ''}`}
-                  onClick={() => v.cod !== '—' && escolherVendedor(v.cod, v.nome)}
+                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.vendedor === v.cod ? 'bg-primary/10' : marcadosVend.has(v.cod) ? 'bg-primary/5' : ''}`}
+                  onClick={() => v.cod !== 'SEM' && escolherVendedor(v.cod, v.nome)}
                 >
-                  <td className="px-4 py-1.5 tabular-nums text-on-surface-variant">{v.cod}</td>
+                  <td className="px-4 py-1.5" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Marcar ${v.nome}`}
+                      className="h-4 w-4 accent-primary"
+                      checked={marcadosVend.has(v.cod)}
+                      onChange={() => alternarVend(v.cod)}
+                    />
+                  </td>
+                  <td className="px-4 py-1.5 tabular-nums text-on-surface-variant">{v.cod === 'SEM' ? '—' : v.cod}</td>
                   <td className="px-4 py-1.5 font-medium text-on-surface">{v.nome}</td>
                   <td className="px-4 py-1.5 text-on-surface-variant">{v.regiao}</td>
                   <td className="px-4 py-1.5 text-right tabular-nums">{v.ts.length}</td>
@@ -593,13 +690,13 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
                   <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{v.recompra ? moeda(v.recompra) : '—'}</td>
                   <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{v.fidc ? moeda(v.fidc) : '—'}</td>
                   <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(v.total)}</td>
-                  <td className="px-4 py-1.5 text-right">{v.cod !== '—' && botaoBaixar(linkCobranca({ vendedor: v.cod, regiao: '' }))}</td>
+                  <td className="px-4 py-1.5 text-right">{botaoBaixar(linkSelecionados('abas', [v.cod]), 'Baixar só este')}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {porVendedor.length > 15 && (
+        {!buscaVend.trim() && porVendedor.length > 15 && (
           <div className="px-4 py-3">
             <button type="button" onClick={() => setVerTodosVendedores((x) => !x)} className="text-body-sm text-primary">
               {verTodosVendedores ? 'Mostrar só os 15 maiores' : `Ver todos os ${porVendedor.length} vendedores`}
