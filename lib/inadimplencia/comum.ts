@@ -35,6 +35,12 @@ export interface TituloVencido {
   grupo: boolean; // cliente é empresa do grupo (venda entre empresas)
 }
 
+/**
+ * Vendedores que não podem aparecer no sistema (inadimplência): títulos deles, ou de clientes que
+ * têm eles como representante, ficam de fora. 9233 = MAURICIO(ITALAC).
+ */
+export const VENDEDORES_OCULTOS = ['9233'];
+
 /** Como a cobrança escreve na coluna DESCRIÇÃO BANCARIA. */
 export function descricaoBancaria(tipo: TipoCarteira, fidc: string | null, recompra: boolean) {
   if (recompra) return 'RECOMPRA';

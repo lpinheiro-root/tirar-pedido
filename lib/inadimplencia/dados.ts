@@ -1,5 +1,5 @@
 import { getPool } from '@/lib/sqlserver';
-import { classificarCarteira, descricaoBancaria, regiaoDaUf, ufDoNome, type TituloVencido } from './comum';
+import { VENDEDORES_OCULTOS, classificarCarteira, descricaoBancaria, regiaoDaUf, ufDoNome, type TituloVencido } from './comum';
 
 /**
  * Títulos a receber vencidos e não pagos, lidos do ORGM (WORK_NATUHAIR), só leitura.
@@ -16,6 +16,7 @@ export async function buscarVencidos(incluirGrupo: boolean): Promise<TituloVenci
     await new Promise((r) => setTimeout(r, 1500));
     return getPool();
   });
+  const ocultos = VENDEDORES_OCULTOS.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
   const { recordset } = await pool.request().query(`
     SELECT x.FinMovID, RTRIM(x.EmpresaID) AS EmpresaID, RTRIM(x.NomeEmpresa) AS NomeEmpresa,
       RTRIM(x.ClienteCod) AS ClienteCod, RTRIM(x.ClienteDesc) AS ClienteDesc, RTRIM(cli.ContFant) AS ClienteFant, RTRIM(x.CNPJ) AS CNPJ,
@@ -36,6 +37,9 @@ export async function buscarVencidos(incluirGrupo: boolean): Promise<TituloVenci
     LEFT JOIN dbo.Municipios m ON m.MunicipioID = e.MunicipioID
     WHERE x.Tipo = 'CR' AND x.Vencimento < CAST(GETDATE() AS date) AND x.Saldo > 0.01
       AND ISNULL(f.Cancelado, 0) = 0 AND ISNULL(f.Encerrado, 0) = 0
+      AND ISNULL(RTRIM(f.Vendedor), '') NOT IN (${ocultos})
+      AND ISNULL(RTRIM(cli.Representante), '') NOT IN (${ocultos})
+      AND ISNULL(RTRIM(v.ContaID), '') NOT IN (${ocultos})
       ${incluirGrupo ? '' : 'AND ISNULL(x.EmpresaDoGrupo, 0) = 0'}`);
 
   const vistos = new Set<number>();
