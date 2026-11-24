@@ -56,6 +56,7 @@ export interface Representante {
   acesso_fidc?: boolean;
   acesso_fidc_mensal?: boolean;
   acesso_fidc_carteira?: boolean;
+  acesso_inadimplencia?: boolean;
   criado_em: string;
 }
 

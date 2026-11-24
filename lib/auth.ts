@@ -61,6 +61,7 @@ export function acessos(r: Representante) {
     fidc: Boolean(r.super_admin) || Boolean(r.acesso_fidc),
     fidcMensal: Boolean(r.super_admin) || Boolean(r.acesso_fidc_mensal),
     fidcCarteira: Boolean(r.super_admin) || Boolean(r.acesso_fidc_carteira),
+    inadimplencia: Boolean(r.super_admin) || Boolean(r.acesso_inadimplencia),
   };
 }
 
@@ -74,7 +75,15 @@ export function telaInicial(r: Representante) {
   if (a.nfe) return '/admin/nfe';
   if (a.fidc) return '/admin/fidc';
   if (a.fidcMensal) return '/admin/fidc-mensal';
-  return a.fidcCarteira ? '/admin/fidc-carteira' : '/admin/conta';
+  if (a.fidcCarteira) return '/admin/fidc-carteira';
+  return a.inadimplencia ? '/admin/inadimplencia' : '/admin/conta';
+}
+
+/** Inadimplência (títulos a receber vencidos, do ORGM): super admin ou usuário com acesso liberado. */
+export async function requireInadimplencia() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).inadimplencia) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** Carteira FIDC (borderô × carteira no ORGM): super admin ou usuário com acesso liberado. */

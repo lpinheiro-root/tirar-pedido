@@ -78,6 +78,10 @@ export function NovoUsuarioForm() {
             <input type="checkbox" name="acesso_fidc_carteira" className="h-4 w-4 accent-primary" />
             Carteira FIDC
           </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+            <input type="checkbox" name="acesso_inadimplencia" className="h-4 w-4 accent-primary" />
+            Inadimplência
+          </label>
         </div>
       </div>
       <div className="mt-4">

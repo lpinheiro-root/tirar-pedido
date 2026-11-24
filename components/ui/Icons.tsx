@@ -158,6 +158,14 @@ export const IconDocument = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** Alerta (triângulo): inadimplência. */
+export const IconAlert = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M12 4 3 19h18L12 4Z" />
+    <path d="M12 10v4M12 16.5v.5" />
+  </svg>
+);
+
 /** Carteira (pasta com check): conferência de carteira. */
 export const IconWallet = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
