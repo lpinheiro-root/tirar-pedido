@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     fidc: p.get('fidc') ?? '',
     faixa: (p.get('faixa') ?? '') as Filtros['faixa'],
     vendedor: p.get('vendedor') ?? '',
+    regiao: p.get('regiao') ?? '',
     busca: p.get('busca') ?? '',
   };
   let ts: TituloVencido[];
@@ -98,10 +99,14 @@ export async function GET(request: Request) {
     { header: 'Valor', key: 'valor', width: 15, style: { numFmt: MOEDA } },
     { header: 'Pago', key: 'pago', width: 14, style: { numFmt: MOEDA } },
     { header: 'Saldo', key: 'saldo', width: 15, style: { numFmt: MOEDA } },
+    { header: 'Descrição bancária', key: 'descricao', width: 16 },
     { header: 'Onde está', key: 'tipo', width: 18 },
     { header: 'FIDC', key: 'fidc', width: 12 },
     { header: 'Carteira ORGM', key: 'carteira', width: 34 },
-    { header: 'Vendedor', key: 'vendedor', width: 22 },
+    { header: 'Cód. vendedor', key: 'vendedorCod', width: 11 },
+    { header: 'Vendedor', key: 'vendedor', width: 24 },
+    { header: 'Região', key: 'regiao', width: 13 },
+    { header: 'Cidade', key: 'cidade', width: 24 },
   ];
   for (const x of ts)
     t.addRow({

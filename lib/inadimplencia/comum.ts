@@ -11,6 +11,7 @@ export interface TituloVencido {
   empresa: string;
   clienteCod: string;
   cliente: string;
+  clienteFantasia: string;
   cnpj: string;
   documento: string;
   emissao: string | null;
@@ -23,8 +24,42 @@ export interface TituloVencido {
   carteira: string;
   tipoCarteira: TipoCarteira;
   fidc: string | null; // nome da FIDC quando a carteira é de FIDC
+  recompra: boolean; // histórico do título diz "RECOMPRADO"
+  descricao: string; // "DESCRIÇÃO BANCARIA" da planilha da cobrança: RECOMPRA / nome da FIDC / CARTEIRA
+  vendedorCod: string;
   vendedor: string;
+  ufVendedor: string | null;
+  regiao: string;
+  cidade: string; // "GOIANIA/GO"
+  bairro: string;
   grupo: boolean; // cliente é empresa do grupo (venda entre empresas)
+}
+
+/** Como a cobrança escreve na coluna DESCRIÇÃO BANCARIA. */
+export function descricaoBancaria(tipo: TipoCarteira, fidc: string | null, recompra: boolean) {
+  if (recompra) return 'RECOMPRA';
+  if (tipo === 'fidc' && fidc) return semAcento(fidc).toUpperCase();
+  return 'CARTEIRA';
+}
+
+const UFS = 'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ');
+/** "MARIA DO ROCIO ( MS )", "EVANILDO (MT)", "RODRIGO QUINTINO CLEMENTE(GO)" → UF. */
+export function ufDoNome(nome: string): string | null {
+  const m = nome.toUpperCase().match(/\(\s*([A-Z]{2})\b/);
+  return m && UFS.includes(m[1]) ? m[1] : null;
+}
+
+export const REGIOES: Record<string, string[]> = {
+  'Centro-Oeste': ['DF', 'GO', 'MS', 'MT'],
+  Norte: ['AC', 'AM', 'AP', 'PA', 'RO', 'RR', 'TO'],
+  Nordeste: ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
+  Sudeste: ['ES', 'MG', 'RJ', 'SP'],
+  Sul: ['PR', 'RS', 'SC'],
+};
+export function regiaoDaUf(uf: string | null): string {
+  if (!uf) return 'Sem região';
+  for (const [r, ufs] of Object.entries(REGIOES)) if (ufs.includes(uf)) return r;
+  return 'Sem região';
 }
 
 export const TIPOS_CARTEIRA: { id: TipoCarteira; rotulo: string }[] = [
@@ -80,7 +115,8 @@ export interface Filtros {
   tipo?: TipoCarteira | '';
   fidc?: string;
   faixa?: Faixa | '';
-  vendedor?: string;
+  vendedor?: string; // código do vendedor
+  regiao?: string;
   busca?: string;
 }
 
@@ -95,9 +131,11 @@ export function filtrar(ts: TituloVencido[], f: Filtros) {
       (!f.tipo || t.tipoCarteira === f.tipo) &&
       (!f.fidc || t.fidc === f.fidc) &&
       (!f.faixa || faixaDe(t.dias) === f.faixa) &&
-      (!f.vendedor || t.vendedor === f.vendedor) &&
+      (!f.vendedor || t.vendedorCod === f.vendedor) &&
+      (!f.regiao || t.regiao === f.regiao) &&
       (!b ||
-        semAcento(`${t.cliente} ${t.documento} ${t.clienteCod}`).toLowerCase().includes(b) ||
+        semAcento(`${t.cliente} ${t.clienteFantasia} ${t.documento} ${t.clienteCod} ${t.vendedor} ${t.cidade}`).toLowerCase().includes(b) ||
+        t.vendedorCod.toLowerCase() === b ||
         (bDig.length >= 4 && t.cnpj.replace(/\D/g, '').includes(bDig)))
   );
 }

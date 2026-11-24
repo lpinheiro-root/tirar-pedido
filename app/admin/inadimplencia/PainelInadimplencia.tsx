@@ -144,6 +144,13 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
   const [ordem, setOrdem] = useState<Ordem>('dias');
   const [pagina, setPagina] = useState(0);
   const [clienteAberto, setClienteAberto] = useState<string | null>(null);
+  const [textoVendedor, setTextoVendedor] = useState('');
+  const escolherVendedor = (cod: string, nome: string) => {
+    const tira = f.vendedor === cod;
+    setF((x) => ({ ...x, vendedor: tira ? '' : cod }));
+    setTextoVendedor(tira ? '' : `${cod} · ${nome}`);
+    setPagina(0);
+  };
   const muda = (p: Partial<Filtros>) => {
     setF((x) => ({ ...x, ...p }));
     setPagina(0);
@@ -155,7 +162,10 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     return {
       empresas: Array.from(emp.entries()).sort((a, b) => a[1].localeCompare(b[1])),
       fidcs: Array.from(new Set(titulos.map((t) => t.fidc).filter(Boolean) as string[])).sort(),
-      vendedores: Array.from(new Set(titulos.map((t) => t.vendedor).filter(Boolean))).sort(),
+      vendedores: Array.from(new Map(titulos.filter((t) => t.vendedorCod).map((t) => [t.vendedorCod, t.vendedor])).entries()).sort((a, b) =>
+        a[1].localeCompare(b[1])
+      ),
+      regioes: Array.from(new Set(titulos.map((t) => t.regiao))).sort(),
     };
   }, [titulos]);
 
@@ -248,6 +258,55 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
   const params = new URLSearchParams();
   if (incluirGrupo) params.set('grupo', '1');
   Object.entries(f).forEach(([k, v]) => v && params.set(k, String(v)));
+  /** Link da planilha no modelo da cobrança com os filtros da tela + os informados. */
+  const linkCobranca = (extra: Partial<Filtros>) => {
+    const q = new URLSearchParams(params);
+    Object.entries(extra).forEach(([k, v]) => (v ? q.set(k, String(v)) : q.delete(k)));
+    return `/api/inadimplencia/cobranca?${q.toString()}`;
+  };
+
+  // por vendedor (com carteira / recompra / FIDC, como a cobrança separa)
+  const porVendedor = useMemo(() => {
+    const m = new Map<string, TituloVencido[]>();
+    lista.forEach((t) => m.set(t.vendedorCod || '—', [...(m.get(t.vendedorCod || '—') ?? []), t]));
+    return Array.from(m.entries())
+      .map(([cod, ts]) => ({
+        cod,
+        nome: ts[0].vendedor,
+        regiao: ts[0].regiao,
+        ts,
+        carteira: soma(ts.filter((t) => t.descricao === 'CARTEIRA')),
+        recompra: soma(ts.filter((t) => t.descricao === 'RECOMPRA')),
+        fidc: soma(ts.filter((t) => t.descricao !== 'CARTEIRA' && t.descricao !== 'RECOMPRA')),
+        total: soma(ts),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [lista]);
+  const porRegiao = useMemo(() => {
+    const m = new Map<string, TituloVencido[]>();
+    lista.forEach((t) => m.set(t.regiao, [...(m.get(t.regiao) ?? []), t]));
+    return Array.from(m.entries())
+      .map(([regiao, ts]) => ({
+        regiao,
+        vendedores: new Set(ts.map((t) => t.vendedorCod)).size,
+        qtd: ts.length,
+        carteira: soma(ts.filter((t) => t.descricao === 'CARTEIRA')),
+        recompra: soma(ts.filter((t) => t.descricao === 'RECOMPRA')),
+        fidc: soma(ts.filter((t) => t.descricao !== 'CARTEIRA' && t.descricao !== 'RECOMPRA')),
+        total: soma(ts),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [lista]);
+  const [verTodosVendedores, setVerTodosVendedores] = useState(false);
+  const botaoBaixar = (href: string, rotulo = 'Baixar planilha') => (
+    <a
+      href={href}
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex h-7 items-center whitespace-nowrap rounded-md border border-primary px-2 text-label font-medium text-primary hover:bg-primary/5"
+    >
+      {rotulo}
+    </a>
+  );
 
   const tituloLinha = (t: TituloVencido) => (
     <tr key={t.finMovId} className="border-t border-border-muted">
@@ -261,12 +320,15 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
       <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${t.dias > 90 ? 'font-semibold text-error' : ''}`}>{t.dias} d</td>
       <td className="whitespace-nowrap px-3 py-1.5 text-right font-medium tabular-nums">{moeda(t.saldo)}</td>
       <td className="px-3 py-1.5">
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-1.5" title={t.carteira}>
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: COR_TIPO[t.tipoCarteira] }} />
-          <span className="text-on-surface">{t.fidc ?? t.carteira}</span>
+          <span className="text-on-surface">{t.descricao}</span>
         </span>
       </td>
-      <td className="px-3 py-1.5 text-on-surface-variant">{t.vendedor || '—'}</td>
+      <td className="px-3 py-1.5 text-on-surface-variant">
+        {t.vendedorCod ? <span className="mr-1 tabular-nums">{t.vendedorCod} ·</span> : null}
+        {t.vendedor}
+      </td>
     </tr>
   );
 
@@ -278,7 +340,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
       <th className="px-3 py-2 text-right font-medium">Vencimento</th>
       <th className="px-3 py-2 text-right font-medium">Atraso</th>
       <th className="px-3 py-2 text-right font-medium">Saldo</th>
-      <th className="px-3 py-2 text-left font-medium">Carteira</th>
+      <th className="px-3 py-2 text-left font-medium">Descrição bancária</th>
       <th className="px-3 py-2 text-left font-medium">Vendedor</th>
     </tr>
   );
@@ -330,20 +392,51 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
             </select>
           </label>
           <label className="flex flex-col text-label text-on-surface-variant">
-            Vendedor
-            <select value={f.vendedor ?? ''} onChange={(e) => muda({ vendedor: e.target.value })} className={`${seletor} max-w-[200px]`}>
-              <option value="">Todos</option>
-              {opcoes.vendedores.map((x) => (
+            Região
+            <select value={f.regiao ?? ''} onChange={(e) => muda({ regiao: e.target.value, vendedor: '' })} className={seletor}>
+              <option value="">Todas</option>
+              {opcoes.regioes.map((x) => (
                 <option key={x}>{x}</option>
               ))}
             </select>
           </label>
           <label className="flex flex-col text-label text-on-surface-variant">
-            Cliente, CNPJ ou documento
+            Vendedor (código ou nome)
+            <input
+              list="lista-vendedores"
+              value={textoVendedor}
+              onChange={(e) => {
+                setTextoVendedor(e.target.value);
+                const v = e.target.value.trim();
+                const cod = v.split('·')[0].trim();
+                // código digitado ou escolhido na lista
+                const achado = opcoes.vendedores.find(([c]) => c === cod) ?? opcoes.vendedores.find(([, n]) => n.toUpperCase() === v.toUpperCase());
+                muda({ vendedor: achado ? achado[0] : '' });
+              }}
+              placeholder="ex.: 1776 ou SOLANGE"
+              className={`${seletor} w-60`}
+            />
+            <datalist id="lista-vendedores">
+              {opcoes.vendedores
+                .filter(([cod]) => !f.regiao || titulos.some((t) => t.vendedorCod === cod && t.regiao === f.regiao))
+                .map(([cod, nome]) => (
+                  <option key={cod} value={`${cod} · ${nome}`} />
+                ))}
+            </datalist>
+          </label>
+          <label className="flex flex-col text-label text-on-surface-variant">
+            Cliente, CNPJ, documento ou cidade
             <input value={f.busca ?? ''} onChange={(e) => muda({ busca: e.target.value })} placeholder="buscar…" className={`${seletor} w-56`} />
           </label>
           {Object.values(f).some(Boolean) && (
-            <button type="button" onClick={() => muda({ empresa: '', tipo: '', fidc: '', faixa: '', vendedor: '', busca: '' })} className="h-9 px-2 text-body-sm text-primary">
+            <button
+              type="button"
+              onClick={() => {
+                muda({ empresa: '', tipo: '', fidc: '', faixa: '', vendedor: '', regiao: '', busca: '' });
+                setTextoVendedor('');
+              }}
+              className="h-9 px-2 text-body-sm text-primary"
+            >
               Limpar filtros
             </button>
           )}
@@ -352,10 +445,17 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
               {incluirGrupo ? 'Tirar vendas entre empresas do grupo' : 'Incluir vendas entre empresas do grupo'}
             </Link>
             <a
-              href={`/api/inadimplencia/exportar?${params.toString()}`}
+              href={linkCobranca({})}
+              title="Uma aba por vendedor no modelo da cobrança (INAD <VENDEDOR>) + aba FINAL com os totais"
               className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-body-sm font-medium text-on-primary hover:bg-primary/90"
             >
-              Baixar Excel
+              Baixar planilha da cobrança
+            </a>
+            <a
+              href={`/api/inadimplencia/exportar?${params.toString()}`}
+              className="inline-flex h-9 items-center rounded-md border border-primary px-3 text-body-sm font-medium text-primary hover:bg-primary/5"
+            >
+              Excel completo
             </a>
           </div>
         </div>
@@ -416,6 +516,97 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
           )}
         </Card>
       </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+          <h2 className="text-h2 text-on-surface">Por região</h2>
+          <span className="text-label text-on-surface-variant">região pela UF do vendedor · clique para filtrar</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="mt-2 w-full text-body-sm">
+            <thead>
+              <tr className="text-label uppercase text-on-surface-variant">
+                <th className="px-4 py-2 text-left font-medium">Região</th>
+                <th className="px-4 py-2 text-right font-medium">Vendedores</th>
+                <th className="px-4 py-2 text-right font-medium">Títulos</th>
+                <th className="px-4 py-2 text-right font-medium">Carteira</th>
+                <th className="px-4 py-2 text-right font-medium">Recompra</th>
+                <th className="px-4 py-2 text-right font-medium">FIDC</th>
+                <th className="px-4 py-2 text-right font-medium">Total</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {porRegiao.map((r) => (
+                <tr
+                  key={r.regiao}
+                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.regiao === r.regiao ? 'bg-primary/10' : ''}`}
+                  onClick={() => muda({ regiao: f.regiao === r.regiao ? '' : r.regiao, vendedor: '' })}
+                >
+                  <td className="px-4 py-1.5 font-medium text-on-surface">{r.regiao}</td>
+                  <td className="px-4 py-1.5 text-right tabular-nums">{r.vendedores}</td>
+                  <td className="px-4 py-1.5 text-right tabular-nums">{r.qtd}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.carteira ? moeda(r.carteira) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.recompra ? moeda(r.recompra) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.fidc ? moeda(r.fidc) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(r.total)}</td>
+                  <td className="px-4 py-1.5 text-right">{botaoBaixar(linkCobranca({ regiao: r.regiao, vendedor: '' }), 'Baixar planilha da região')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+          <h2 className="text-h2 text-on-surface">Por vendedor ({porVendedor.length})</h2>
+          <span className="text-label text-on-surface-variant">clique no vendedor para filtrar · “Baixar planilha” sai no modelo INAD da cobrança</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="mt-2 w-full text-body-sm">
+            <thead>
+              <tr className="text-label uppercase text-on-surface-variant">
+                <th className="px-4 py-2 text-left font-medium">Cód.</th>
+                <th className="px-4 py-2 text-left font-medium">Vendedor</th>
+                <th className="px-4 py-2 text-left font-medium">Região</th>
+                <th className="px-4 py-2 text-right font-medium">Títulos</th>
+                <th className="px-4 py-2 text-right font-medium">Carteira</th>
+                <th className="px-4 py-2 text-right font-medium">Recompra</th>
+                <th className="px-4 py-2 text-right font-medium">FIDC</th>
+                <th className="px-4 py-2 text-right font-medium">Total</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {(verTodosVendedores ? porVendedor : porVendedor.slice(0, 15)).map((v) => (
+                <tr
+                  key={v.cod}
+                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.vendedor === v.cod ? 'bg-primary/10' : ''}`}
+                  onClick={() => v.cod !== '—' && escolherVendedor(v.cod, v.nome)}
+                >
+                  <td className="px-4 py-1.5 tabular-nums text-on-surface-variant">{v.cod}</td>
+                  <td className="px-4 py-1.5 font-medium text-on-surface">{v.nome}</td>
+                  <td className="px-4 py-1.5 text-on-surface-variant">{v.regiao}</td>
+                  <td className="px-4 py-1.5 text-right tabular-nums">{v.ts.length}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{v.carteira ? moeda(v.carteira) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{v.recompra ? moeda(v.recompra) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{v.fidc ? moeda(v.fidc) : '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(v.total)}</td>
+                  <td className="px-4 py-1.5 text-right">{v.cod !== '—' && botaoBaixar(linkCobranca({ vendedor: v.cod, regiao: '' }))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {porVendedor.length > 15 && (
+          <div className="px-4 py-3">
+            <button type="button" onClick={() => setVerTodosVendedores((x) => !x)} className="text-body-sm text-primary">
+              {verTodosVendedores ? 'Mostrar só os 15 maiores' : `Ver todos os ${porVendedor.length} vendedores`}
+            </button>
+          </div>
+        )}
+      </Card>
 
       <Card className="overflow-hidden">
         <h2 className="px-4 pt-4 text-h2 text-on-surface">Por empresa</h2>
