@@ -132,23 +132,23 @@ function Detalhe({ id, onResumo }: { id: number; onResumo: (r: Resumo) => void }
         <span className="text-label text-on-surface-variant">Depois de trocar a carteira no ORGM, clique em “Conferir de novo”.</span>
       </div>
       <div className="max-h-[520px] overflow-auto rounded-md border border-border-muted bg-surface-container-lowest">
-        <table className="w-full text-body-sm">
+        <table className="w-full text-body-sm font-semibold">
           <thead className="sticky top-0 bg-surface-container-lowest">
             <tr className="text-label uppercase text-on-surface-variant">
-              <th className="px-3 py-2 text-left font-medium">Título (borderô)</th>
-              <th className="px-3 py-2 text-left font-medium">Doc. ORGM</th>
-              <th className="px-3 py-2 text-left font-medium">Sacado</th>
-              <th className="px-3 py-2 text-right font-medium">Vencimento</th>
-              <th className="px-3 py-2 text-right font-medium">Valor</th>
-              <th className="px-3 py-2 text-left font-medium">Carteira no ORGM</th>
-              <th className="px-3 py-2 text-left font-medium">Situação</th>
+              <th className="px-3 py-2 text-left font-bold">Título (borderô)</th>
+              <th className="px-3 py-2 text-left font-bold">Doc. ORGM</th>
+              <th className="px-3 py-2 text-left font-bold">Sacado</th>
+              <th className="px-3 py-2 text-right font-bold">Vencimento</th>
+              <th className="px-3 py-2 text-right font-bold">Valor</th>
+              <th className="px-3 py-2 text-left font-bold">Carteira no ORGM</th>
+              <th className="px-3 py-2 text-left font-bold">Situação</th>
             </tr>
           </thead>
           <tbody>
             {lista.map((t) => (
               <tr key={t.ordem} className="border-t border-border-muted align-top">
                 <td className="whitespace-nowrap px-3 py-1.5 tabular-nums">{t.numero}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-on-surface-variant">
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-on-surface">
                   {t.documento ?? '—'}
                   {t.empresaId ? <span className="ml-1 text-label">(emp. {t.empresaId})</span> : null}
                 </td>
@@ -309,23 +309,23 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
 
       <div className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card className="p-4">
-          <p className="text-label uppercase text-on-surface-variant">Borderôs</p>
-          <p className="mt-1 text-h2 tabular-nums text-on-surface">{filtrados.length}</p>
+          <p className="text-label font-bold uppercase text-on-surface">Borderôs</p>
+          <p className="mt-1 text-h2 font-extrabold tabular-nums text-on-surface">{filtrados.length}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-label uppercase text-on-surface-variant">Títulos com carteira certa</p>
-          <p className="mt-1 text-h2 tabular-nums text-on-surface">
+          <p className="text-label font-bold uppercase text-on-surface">Títulos com carteira certa</p>
+          <p className="mt-1 text-h2 font-extrabold tabular-nums text-on-surface">
             {tot.ok}
-            <span className="text-body text-on-surface-variant"> / {tot.titulos}</span>
+            <span className="text-body font-bold text-on-surface-variant"> / {tot.titulos}</span>
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-label uppercase text-on-surface-variant">Falta trocar a carteira</p>
-          <p className={`mt-1 text-h2 tabular-nums ${tot.falta ? 'text-amber-800' : 'text-on-surface'}`}>{tot.falta}</p>
+          <p className="text-label font-bold uppercase text-on-surface">Falta trocar a carteira</p>
+          <p className={`mt-1 text-h2 font-extrabold tabular-nums ${tot.falta ? 'text-amber-800' : 'text-on-surface'}`}>{tot.falta}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-label uppercase text-on-surface-variant">Outra carteira / não achados</p>
-          <p className={`mt-1 text-h2 tabular-nums ${tot.outra ? 'text-error' : 'text-on-surface'}`}>{tot.outra}</p>
+          <p className="text-label font-bold uppercase text-on-surface">Outra carteira / não achados</p>
+          <p className={`mt-1 text-h2 font-extrabold tabular-nums ${tot.outra ? 'text-error' : 'text-on-surface'}`}>{tot.outra}</p>
         </Card>
       </div>
 
@@ -356,7 +356,7 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
           </a>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-body-sm">
+          <table className="w-full text-body-sm font-semibold">
             <thead>
               <tr className="text-label uppercase text-on-surface-variant">
                 <th className="w-10 px-4 py-2">
@@ -368,13 +368,13 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
                     onChange={(e) => setMarcados(e.target.checked ? new Set(visiveis.map((b) => b.id)) : new Set())}
                   />
                 </th>
-                <th className="px-4 py-2 text-left font-medium">Data</th>
-                <th className="px-4 py-2 text-left font-medium">FIDC · Empresa</th>
-                <th className="px-4 py-2 text-left font-medium">Borderô</th>
-                <th className="px-4 py-2 text-right font-medium">Títulos</th>
-                <th className="px-4 py-2 text-right font-medium">Valor</th>
-                <th className="px-4 py-2 text-left font-medium">Conferência no ORGM</th>
-                <th className="px-4 py-2 text-left font-medium">Importado por</th>
+                <th className="px-4 py-2 text-left font-bold">Data</th>
+                <th className="px-4 py-2 text-left font-bold">FIDC · Empresa</th>
+                <th className="px-4 py-2 text-left font-bold">Borderô</th>
+                <th className="px-4 py-2 text-right font-bold">Títulos</th>
+                <th className="px-4 py-2 text-right font-bold">Valor</th>
+                <th className="px-4 py-2 text-left font-bold">Conferência no ORGM</th>
+                <th className="px-4 py-2 text-left font-bold">Importado por</th>
               </tr>
             </thead>
             <tbody>
@@ -394,7 +394,7 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
                       <span className="mr-1 inline-block w-3 text-on-surface-variant">{aberto === b.id ? '▾' : '▸'}</span>
                       {br(b.data)}
                     </td>
-                    <td className="px-4 py-2 font-medium text-on-surface">
+                    <td className="px-4 py-2 font-bold text-on-surface">
                       {b.fidc} · {b.empresa}
                     </td>
                     <td className="px-4 py-2 tabular-nums">nº {b.numero}</td>
