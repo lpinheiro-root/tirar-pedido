@@ -13,6 +13,7 @@ export interface SidebarLink {
 export function Sidebar({
   links,
   nome,
+  foto,
   subtitulo,
   footer,
   titulo = 'Natuhair Pedidos',
@@ -20,6 +21,7 @@ export function Sidebar({
 }: {
   links: SidebarLink[];
   nome: string;
+  foto?: string | null;
   subtitulo: string;
   footer?: React.ReactNode;
   titulo?: string;
@@ -76,7 +78,7 @@ export function Sidebar({
 
       <div className="border-t border-border-muted px-4 py-4">
         <div className="flex items-center gap-3">
-          <Avatar nome={nome} />
+          <Avatar nome={nome} foto={foto} />
           <div className="min-w-0">
             <p className="truncate text-body font-medium text-on-surface">{nome}</p>
             <p className="truncate text-label text-on-surface-variant">{subtitulo}</p>

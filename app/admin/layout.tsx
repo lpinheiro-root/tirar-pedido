@@ -33,11 +33,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         titulo="Natuhair"
         logo="/natuhair-logo.jpg"
         nome={representante.nome}
+        foto={representante.foto}
         subtitulo={representante.super_admin ? 'Administrador' : 'Usuário'}
         footer={<SidebarFooter contaHref="/admin/conta" />}
       />
       <div className="flex min-h-screen flex-1 flex-col">
-        <Header />
+        <Header usuario={{ nome: representante.nome, email: representante.email, foto: representante.foto, contaHref: '/admin/conta' }} />
         <main className="mx-auto w-full max-w-content flex-1 px-8 py-8">{children}</main>
       </div>
     </div>

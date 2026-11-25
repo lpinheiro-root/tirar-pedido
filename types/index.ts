@@ -57,6 +57,8 @@ export interface Representante {
   acesso_fidc_mensal?: boolean;
   acesso_fidc_carteira?: boolean;
   acesso_inadimplencia?: boolean;
+  /** foto do usuário (JPEG pequeno em data URL), supabase/foto_usuario.sql */
+  foto?: string | null;
   criado_em: string;
 }
 

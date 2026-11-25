@@ -22,11 +22,15 @@ export default async function RepresentanteLayout({ children }: { children: Reac
         <Sidebar
           links={links}
           nome={representante.nome}
+          foto={representante.foto}
           subtitulo="Representante B2B"
           footer={<SidebarFooter contaHref="/representante/conta" />}
         />
         <div className="flex min-h-screen flex-1 flex-col">
-          <Header rightSlot={<ClientSelectorBadge />} />
+          <Header
+            rightSlot={<ClientSelectorBadge />}
+            usuario={{ nome: representante.nome, email: representante.email, foto: representante.foto, contaHref: '/representante/conta' }}
+          />
           <main className="mx-auto w-full max-w-content flex-1 px-8 py-8">{children}</main>
         </div>
       </div>
