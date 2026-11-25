@@ -182,3 +182,11 @@ export const IconBank = (p: SVGProps<SVGSVGElement>) => (
     <path d="M3 21h18" />
   </svg>
 );
+
+export const IconPresentation = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M3 4h18M4 4v11h16V4" />
+    <path d="M12 15v4M8 21l4-2 4 2" />
+    <path d="M8 11l3-3 2 2 3-3" />
+  </svg>
+);
