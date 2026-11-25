@@ -105,10 +105,10 @@ export async function salvarParametro(rubrica: string, percentual: number | null
   return {};
 }
 
-/** Pagamentos que formam o valor de uma conta num mês. */
+/** Pagamentos que formam o valor de uma conta num mês (mes 0 = o ano todo). */
 export async function detalheConta(ano: number, mes: number, conta: string): Promise<{ erro?: string; linhas?: Pagamento[] }> {
   await requireRelatorioGerencial();
-  if (!anoValido(ano) || !mesValido(mes)) return { erro: 'Mês inválido.' };
+  if (!anoValido(ano) || !(mes === 0 || mesValido(mes))) return { erro: 'Mês inválido.' };
   try {
     return { linhas: await buscarPagamentosConta(ano, mes, conta) };
   } catch (e) {

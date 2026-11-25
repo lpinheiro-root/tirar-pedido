@@ -48,6 +48,7 @@ export function PainelGerencial({
   parametros: Record<string, number>;
 }) {
   const [aberta, setAberta] = useState<string | null>(null);
+  const [semAberta, setSemAberta] = useState<string | null>(null);
   const [editarMes, setEditarMes] = useState<number | null>(null);
   const [novoAjuste, setNovoAjuste] = useState<{ mes: number; de: string; para: string } | null>(null);
   const [detalhe, setDetalhe] = useState<{ mes: number; conta: string; nome: string } | null>(null);
@@ -66,7 +67,8 @@ export function PainelGerencial({
     [contas, ajustes, depara, mensal, parametros, ultimoMesFechado]
   );
 
-  const { porRub, total, fat, receb, fechados, nMeses, somaMeses, mediaReceb, fatFechado, semRubrica, param, colunas } = calc;
+  const { porRub, total, fat, receb, fechados, nMeses, somaMeses, mediaReceb, semRubrica, param, colunas, pctFat, mesesFat } = calc;
+  const pctOu = (x: number | null) => (x === null ? '–' : pct(x));
 
   const despAno = soma(total);
   const fatAno = soma(fat);
@@ -108,7 +110,7 @@ export function PainelGerencial({
         {[
           ['Despesas pagas no ano', brl(despAno)],
           ['Faturamento no ano', brl(fatAno)],
-          ['Despesas ÷ faturamento', fatFechado ? pct(somaMeses(total) / fatFechado) : '–'],
+          ['Despesas ÷ faturamento', pctOu(pctFat(total))],
           ['Recebimento no ano', brl(recebAno)],
           ['Contas sem rubrica', semRubrica.length ? `${semRubrica.length} · ${brl(soma(semRubrica.map((c) => soma(c.v))))}` : 'nenhuma'],
         ].map(([t, v]) => (
@@ -124,14 +126,31 @@ export function PainelGerencial({
           <p className="text-body font-bold text-amber-900">
             Contas pagas que ainda não têm rubrica. Elas entram no total de despesas, mas não em nenhuma linha: escolha a rubrica de cada uma.
           </p>
+          <p className="mt-1 text-body-sm text-amber-900">Clique na setinha para ver todos os pagamentos da conta no ano e decidir onde ela entra.</p>
           <div className="mt-3 space-y-1">
             {semRubrica.map((c) => (
-              <div key={c.conta} className="flex flex-wrap items-center gap-3 text-body-sm">
-                <span className="w-80 truncate font-semibold" title={`${c.grupo} › ${c.nome} (${c.conta})`}>
-                  {c.nome} <span className="font-normal text-on-surface-variant">({c.conta})</span>
-                </span>
-                <span className="w-32 text-right font-bold">{brl(soma(c.v))}</span>
-                <SeletorRubrica valor="" onTrocar={(r) => executar(() => definirRubrica(c.conta, r))} desabilitado={pendente} />
+              <div key={c.conta}>
+                <div className="flex flex-wrap items-center gap-3 text-body-sm">
+                  <button
+                    type="button"
+                    onClick={() => setSemAberta(semAberta === c.conta ? null : c.conta)}
+                    className="flex w-[22rem] items-center gap-1 truncate rounded-lg px-1 text-left font-semibold hover:bg-amber-100"
+                    title={`${c.grupo} › ${c.nome} (${c.conta}) — clique para ver os pagamentos`}
+                    aria-expanded={semAberta === c.conta}
+                  >
+                    <span className="inline-block w-4 shrink-0 text-primary">{semAberta === c.conta ? '▾' : '▸'}</span>
+                    <span className="truncate">
+                      {c.nome} <span className="font-normal text-on-surface-variant">({c.conta})</span>
+                    </span>
+                  </button>
+                  <span className="w-32 text-right font-bold">{brl(soma(c.v))}</span>
+                  <SeletorRubrica valor="" onTrocar={(r) => executar(() => definirRubrica(c.conta, r))} desabilitado={pendente} />
+                </div>
+                {semAberta === c.conta && (
+                  <div className="my-2 ml-6 rounded-xl border border-amber-200 bg-white p-3">
+                    <ListaPagamentos ano={ano} mes={0} conta={c.conta} alturaMax="420px" />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -178,7 +197,7 @@ export function PainelGerencial({
                       </td>
                     ))}
                     <td className="px-2 py-1.5 text-right font-bold">{n0(soma(v))}</td>
-                    <td className="px-2 py-1.5 text-right">{n0(somaMeses(v) / nMeses)}</td>
+                    <td className="px-2 py-1.5 text-right">{n0(calc.mediaLancada(v))}</td>
                     <td colSpan={5} />
                   </tr>
                 );
@@ -219,7 +238,7 @@ export function PainelGerencial({
                       <td className="px-2 py-1.5 text-right font-bold">{n0(soma(v))}</td>
                       <td className="px-2 py-1.5 text-right">{n0(media)}</td>
                       <td className="px-2 py-1.5 text-right">{n0(media * 12)}</td>
-                      <td className="px-2 py-1.5 text-right">{fatFechado ? pct(somaMeses(v) / fatFechado) : '–'}</td>
+                      <td className="px-2 py-1.5 text-right">{pctOu(pctFat(v))}</td>
                       <td className="px-2 py-1.5 text-right">{p ? pct(p) : '–'}</td>
                       <td className="px-2 py-1.5 text-right">{n0(custo)}</td>
                       <td className={`px-2 py-1.5 text-right font-bold ${!p ? '' : custo - media >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{p ? n0(custo - media) : '–'}</td>
@@ -332,7 +351,7 @@ export function PainelGerencial({
                 <td className="px-2 py-2 text-right">{n0(despAno)}</td>
                 <td className="px-2 py-2 text-right">{n0(somaMeses(total) / nMeses)}</td>
                 <td className="px-2 py-2 text-right">{n0((somaMeses(total) / nMeses) * 12)}</td>
-                <td className="px-2 py-2 text-right">{fatFechado ? pct(somaMeses(total) / fatFechado) : '–'}</td>
+                <td className="px-2 py-2 text-right">{pctOu(pctFat(total))}</td>
                 <td className="px-2 py-2 text-right">{pct(RUBRICAS.reduce((s, r) => s + param(r.cod), 0))}</td>
                 <td className="px-2 py-2 text-right">{n0(RUBRICAS.reduce((s, r) => s + param(r.cod), 0) * mediaReceb)}</td>
                 <td />
@@ -360,8 +379,8 @@ export function PainelGerencial({
           </table>
         </div>
         <p className="px-4 py-2 text-label text-on-surface-variant">
-          Despesa = valor pago no mês (data do pagamento), como no relatório do ORGM &quot;pagamentos por conta contábil&quot;. Média e % s/ faturamento usam os{' '}
-          {fechados.length} meses fechados. Clique numa rubrica para ver as contas, trocar a rubrica de uma conta, mudar o parâmetro ou lançar ajuste; clique num
+          Despesa = valor pago no mês (data do pagamento), como no relatório do ORGM &quot;pagamentos por conta contábil&quot;. Média e projeção usam os {fechados.length} meses fechados; % s/ faturamento só os meses com faturamento lançado
+          ({mesesFat.map((i) => MESES[i]).join(', ') || 'nenhum'}). Clique numa rubrica para ver as contas, trocar a rubrica de uma conta, mudar o parâmetro ou lançar ajuste; clique num
           valor da conta para ver os pagamentos.
         </p>
       </Card>
@@ -662,7 +681,8 @@ function JanelaAjuste({
   );
 }
 
-function JanelaDetalhe({ ano, mes, conta, nome, fechar }: { ano: number; mes: number; conta: string; nome: string; fechar: () => void }) {
+/** Pagamentos de uma conta (num mês, ou no ano todo com mes 0), buscados no ORGM. */
+function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number; mes: number; conta: string; alturaMax?: string }) {
   const [estado, setEstado] = useState<{ carregando: boolean; erro?: string; linhas?: Pagamento[] }>({ carregando: true });
   useEffect(() => {
     let vivo = true;
@@ -675,46 +695,57 @@ function JanelaDetalhe({ ano, mes, conta, nome, fechar }: { ano: number; mes: nu
     };
   }, [ano, mes, conta]);
   const linhas = estado.linhas ?? [];
+  const temPedido = linhas.some((l) => l.pedido || l.item);
+  if (estado.carregando) return <p className="py-2 text-body-sm text-on-surface-variant">Buscando no ORGM…</p>;
+  if (estado.erro) return <p className="py-2 text-body-sm text-red-700">{estado.erro}</p>;
+  const ordenadas = mes ? linhas : linhas.slice().sort((a, b) => a.data.localeCompare(b.data));
+  return (
+    <div className="overflow-y-auto" style={{ maxHeight: alturaMax }}>
+      <table className="w-full text-body-sm">
+        <thead className="sticky top-0 bg-white">
+          <tr className="border-b border-border-muted text-left text-on-surface-variant">
+            <th className="py-1">Pagto.</th>
+            <th>Favorecido</th>
+            <th>Histórico</th>
+            {temPedido && <th>Pedido de compra / item</th>}
+            <th>Empresa</th>
+            <th className="text-right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordenadas.map((l) => (
+            <tr key={`${l.finMovId}-${l.valor}`} className="border-b border-border-muted bg-white">
+              <td className="whitespace-nowrap py-1 pr-2">{l.data.split('-').reverse().join('/')}</td>
+              <td className="pr-2 font-semibold">{l.favorecido}</td>
+              <td className="pr-2">{l.historico}</td>
+              {temPedido && (
+                <td className="pr-2">
+                  {l.pedido ? <span className="font-semibold">{l.pedido}</span> : <span className="text-on-surface-variant">sem pedido</span>}
+                  {l.item && <span className="block text-[11px] text-on-surface-variant">{l.item}</span>}
+                </td>
+              )}
+              <td className="pr-2 text-on-surface-variant">{l.empresa}</td>
+              <td className="whitespace-nowrap text-right font-bold">{brl(l.valor)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="font-extrabold">
+            <td colSpan={temPedido ? 5 : 4} className="py-2">
+              {linhas.length} pagamento(s)
+            </td>
+            <td className="text-right">{brl(soma(linhas.map((l) => l.valor)))}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function JanelaDetalhe({ ano, mes, conta, nome, fechar }: { ano: number; mes: number; conta: string; nome: string; fechar: () => void }) {
   return (
     <Janela titulo={`${nome} — ${MESES[mes - 1]}/${ano}`} fechar={fechar} largo>
-      {estado.carregando ? (
-        <p className="text-body-sm text-on-surface-variant">Buscando no ORGM…</p>
-      ) : estado.erro ? (
-        <p className="text-body-sm text-red-700">{estado.erro}</p>
-      ) : (
-        <div className="max-h-[65vh] overflow-y-auto">
-          <table className="w-full text-body-sm">
-            <thead className="sticky top-0 bg-white">
-              <tr className="border-b border-border-muted text-left text-on-surface-variant">
-                <th className="py-1">Pagto.</th>
-                <th>Favorecido</th>
-                <th>Histórico</th>
-                <th>Empresa</th>
-                <th className="text-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((l) => (
-                <tr key={`${l.finMovId}-${l.valor}`} className="border-b border-border-muted">
-                  <td className="py-1 pr-2">{l.data.split('-').reverse().join('/')}</td>
-                  <td className="pr-2 font-semibold">{l.favorecido}</td>
-                  <td className="pr-2">{l.historico}</td>
-                  <td className="pr-2 text-on-surface-variant">{l.empresa}</td>
-                  <td className="text-right font-bold">{brl(l.valor)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="font-extrabold">
-                <td colSpan={4} className="py-2">
-                  {linhas.length} pagamento(s)
-                </td>
-                <td className="text-right">{brl(soma(linhas.map((l) => l.valor)))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+      <ListaPagamentos ano={ano} mes={mes} conta={conta} />
     </Janela>
   );
 }

@@ -75,7 +75,7 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
     row.getCell(C_ANO).value = Math.round(soma(v) * 100) / 100;
     estilo(row.getCell(C_ANO), { fmt: NUM, fill: LARANJA });
     if (o.media) {
-      row.getCell(C_ANO + 3).value = c.somaMeses(v) / c.nMeses;
+      row.getCell(C_ANO + 3).value = c.mediaLancada(v);
       estilo(row.getCell(C_ANO + 3), { fmt: NUM, fill: o.fill });
     }
     return row;
@@ -89,7 +89,7 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
   ws.mergeCells(2, 1, 2, ULT);
   ws.getCell(2, 1).value =
     `Despesas = valores pagos no mês (data do pagamento) no ORGM, por conta contábil, distribuídos nas rubricas do controle, com os ajustes lançados no sistema. ` +
-    `Média, % s/ faturamento e projeção usam os ${c.fechados.length} meses fechados. Gerado em ${hoje.split('-').reverse().join('/')}.`;
+    `Média e projeção usam os ${c.fechados.length} meses fechados; % s/ faturamento e s/ recebimento só os meses com esses valores lançados (${c.mesesFat.map((i) => MESES[i]).join(', ') || 'nenhum'}). Gerado em ${hoje.split('-').reverse().join('/')}.`;
   ws.getCell(2, 1).font = { name: 'Calibri', size: 10, italic: true };
 
   // topo: faturamento, recebimento, cheque especial
@@ -151,8 +151,8 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
     const custo = p * c.mediaReceb;
     const valores: [number, number | null, string][] = [
       [C_ANO, Math.round(totalAno * 100) / 100, NUM],
-      [C_ANO + 1, div(c.somaMeses(v), c.fatFechado), PCT],
-      [C_ANO + 2, div(c.somaMeses(v), c.recebFechado), PCT],
+      [C_ANO + 1, c.pctFat(v), PCT],
+      [C_ANO + 2, c.pctReceb(v), PCT],
       [C_ANO + 3, media, NUM],
       [C_ANO + 4, media * 12, NUM],
       [C_ANO + 5, ant ? media * 12 / ant - 1 : null, PCT],

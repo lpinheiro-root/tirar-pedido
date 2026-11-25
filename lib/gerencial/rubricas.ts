@@ -199,4 +199,6 @@ export interface Pagamento {
   empresa: string;
   valor: number;
   pedido: number | null;
+  /** AA: item de maior valor do pedido de compra */
+  item?: string | null;
 }

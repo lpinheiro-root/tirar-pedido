@@ -71,6 +71,20 @@ export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMe
   const mediaReceb = mesesReceb.length ? mesesReceb.reduce((s, i) => s + receb[i], 0) / mesesReceb.length : 0;
   const fatFechado = somaMeses(fat);
   const recebFechado = somaMeses(receb);
+  // % s/ faturamento (e s/ recebimento): só nos meses fechados em que o valor do mês foi lançado
+  const mesesFat = fechados.filter((i) => fat[i] > 0);
+  const mesesRecebOk = fechados.filter((i) => receb[i] > 0);
+  const sobre = (v: number[], base: number[], meses: number[]) => {
+    const b = meses.reduce((s, i) => s + base[i], 0);
+    return b ? meses.reduce((s, i) => s + v[i], 0) / b : null;
+  };
+  const pctFat = (v: number[]) => sobre(v, fat, mesesFat);
+  const pctReceb = (v: number[]) => sobre(v, receb, mesesRecebOk);
+  /** média de uma linha digitada (faturamento, recebimento…): só nos meses com valor */
+  const mediaLancada = (v: number[]) => {
+    const ms = fechados.filter((i) => Math.abs(v[i]) > 0.005);
+    return ms.length ? ms.reduce((s, i) => s + v[i], 0) / ms.length : 0;
+  };
 
   const semRubrica = Array.from(contasPorRub.get('')?.values() ?? []).sort((a, b) => soma(b.v) - soma(a.v));
   const param = (cod: string) => parametros[cod] ?? RUBRICAS.find((r) => r.cod === cod)?.parametro ?? 0;
@@ -91,6 +105,10 @@ export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMe
     mediaReceb,
     fatFechado,
     recebFechado,
+    mesesFat,
+    pctFat,
+    pctReceb,
+    mediaLancada,
     semRubrica,
     param,
     colunas,

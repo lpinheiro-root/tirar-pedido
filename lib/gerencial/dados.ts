@@ -31,9 +31,13 @@ const CONTA_SQL = `CASE WHEN ctbContaID = '01.083' AND (ContaNome LIKE 'ADYEN%' 
  */
 const AA_SQL = `
   SELECT FinMovID, CONVERT(char(10), DTPagto, 23) AS data, MONTH(DTPagto) AS mes, ValorPagoCTB AS valor,
-    ISNULL(HistoricoCPCR, Historico) AS historico, ISNULL(ClienteDesc, ContaNome) AS favorecido, EmpresaNome
+    ISNULL(HistoricoCPCR, Historico) AS historico, ISNULL(ClienteDesc, ContaNome) AS favorecido, EmpresaNome,
+    RTRIM(ContaID_Pessoa) AS pessoa
   FROM dbo.vFinMovimentosCtbPagtos
   WHERE ${FILTRO} AND ContaContabil IS NULL`;
+
+const CONTAS_MP = "'1.1.4.01.001','04.085'";
+const CONTAS_EMB = "'1.1.4.02.001','04.094'";
 
 interface LinhaAA {
   FinMovID: number;
@@ -46,6 +50,10 @@ interface LinhaAA {
   pedido: number | null;
   pedidoExiste: number | null;
   param: string | null;
+  item: string | null;
+  pessoa: string | null;
+  /** sem pedido: o que o fornecedor costuma vender (pelos pagamentos e pedidos dele no ORGM) */
+  peloFornecedor: 'MP' | 'EMB' | null;
 }
 
 function contaAA(l: LinhaAA): string {
@@ -54,6 +62,8 @@ function contaAA(l: LinhaAA): string {
   if (p === '1.1.4.10.007') return CONTA_AA_EMB;
   if (p && DEPARA_PADRAO[p]) return p; // item com conta de despesa conhecida (uniforme, expediente, limpeza…)
   if (l.pedidoExiste) return CONTA_AA_OUTROS;
+  if (l.peloFornecedor === 'MP') return CONTA_AA_MP;
+  if (l.peloFornecedor === 'EMB') return CONTA_AA_EMB;
   return CONTA_AA_SEM;
 }
 
@@ -69,24 +79,66 @@ async function buscarAA(ano: number, mes?: number): Promise<LinhaAA[]> {
   const { recordset } = await pool.request().input('de', de).input('ate', ate).query(AA_SQL);
   const linhas = (recordset as LinhaAA[]).map((r) => {
     const m = String(r.historico ?? '').match(/1\d{5}/);
-    return { ...r, valor: Number(r.valor) || 0, pedido: m ? Number(m[0]) : null, pedidoExiste: null, param: null } as LinhaAA;
+    return { ...r, valor: Number(r.valor) || 0, pedido: m ? Number(m[0]) : null, pedidoExiste: null, param: null, item: null, peloFornecedor: null } as LinhaAA;
   });
   const pedidos = Array.from(new Set(linhas.map((l) => l.pedido).filter((p): p is number => p !== null)));
-  if (!pedidos.length) return linhas;
+  if (!pedidos.length) return classificarPeloFornecedor(linhas);
 
   // conta do item de maior valor de cada pedido (números inteiros vindos do regex: seguro montar o IN)
   const { recordset: cls } = await pool.request().query(`
     SELECT c.numero_ordem AS pedido,
       (SELECT TOP 1 i.ctbParametroItemID FROM dbo.linhas_oc l LEFT JOIN dbo.Itenstab i ON i.item = l.item
         WHERE l.numero_ordem = c.numero_ordem GROUP BY i.ctbParametroItemID
-        ORDER BY SUM(ISNULL(l.Total, 0)) DESC, COUNT(*) DESC) AS param
+        ORDER BY SUM(ISNULL(l.Total, 0)) DESC, COUNT(*) DESC) AS param,
+      (SELECT TOP 1 RTRIM(i.descricao) FROM dbo.linhas_oc l LEFT JOIN dbo.Itenstab i ON i.item = l.item
+        WHERE l.numero_ordem = c.numero_ordem ORDER BY ISNULL(l.Total, 0) DESC) AS item
     FROM dbo.Compras c WHERE c.numero_ordem IN (${pedidos.join(',')})`);
-  const porPedido = new Map((cls as { pedido: number; param: string | null }[]).map((c) => [Number(c.pedido), c.param]));
+  const porPedido = new Map((cls as { pedido: number; param: string | null; item: string | null }[]).map((c) => [Number(c.pedido), c]));
   for (const l of linhas) {
     if (l.pedido !== null && porPedido.has(l.pedido)) {
       l.pedidoExiste = l.pedido;
-      l.param = porPedido.get(l.pedido) ?? null;
+      l.param = porPedido.get(l.pedido)?.param ?? null;
+      l.item = porPedido.get(l.pedido)?.item ?? null;
     }
+  }
+  return classificarPeloFornecedor(linhas);
+}
+
+/**
+ * AA sem pedido de compra reconhecido: vê no ORGM o que o fornecedor costuma vender. Primeiro pelos pagamentos
+ * dele dos últimos 3 anos nas contas de matéria-prima / embalagem; se não tiver, pelos itens dos pedidos de compra dele.
+ */
+async function classificarPeloFornecedor(linhas: LinhaAA[]): Promise<LinhaAA[]> {
+  const semPedido = linhas.filter((l) => !l.pedidoExiste && l.pessoa && /^\d+$/.test(l.pessoa));
+  const pessoas = Array.from(new Set(semPedido.map((l) => l.pessoa as string)));
+  if (!pessoas.length) return linhas;
+  const lista = pessoas.map((p) => `'${p}'`).join(','); // só dígitos (conferido acima)
+  const pool = await getPool();
+  const [pagos, pedidos] = await Promise.all([
+    pool.request().query(`
+      SELECT RTRIM(ContaID_Pessoa) AS pessoa,
+        SUM(CASE WHEN ctbContaID IN (${CONTAS_MP}) THEN ValorPagoCTB ELSE 0 END) AS mp,
+        SUM(CASE WHEN ctbContaID IN (${CONTAS_EMB}) THEN ValorPagoCTB ELSE 0 END) AS emb
+      FROM dbo.vFinMovimentosCtbPagtos
+      WHERE ContaID_Pessoa IN (${lista}) AND ContaContabil IS NOT NULL AND DTPagto >= DATEADD(year, -3, GETDATE())
+      GROUP BY RTRIM(ContaID_Pessoa)`),
+    pool.request().query(`
+      SELECT RTRIM(c.fornecedor) AS pessoa,
+        SUM(CASE WHEN i.ctbParametroItemID = '1.1.4.10.002' THEN ISNULL(l.Total, 0) ELSE 0 END) AS mp,
+        SUM(CASE WHEN i.ctbParametroItemID = '1.1.4.10.007' THEN ISNULL(l.Total, 0) ELSE 0 END) AS emb
+      FROM dbo.Compras c JOIN dbo.linhas_oc l ON l.numero_ordem = c.numero_ordem LEFT JOIN dbo.Itenstab i ON i.item = l.item
+      WHERE c.fornecedor IN (${lista}) AND c.datap >= DATEADD(year, -3, GETDATE())
+      GROUP BY RTRIM(c.fornecedor)`),
+  ]);
+  const decidir = (rs: { pessoa: string; mp: number; emb: number }[]) =>
+    new Map(rs.map((r) => [String(r.pessoa), Number(r.mp) > Number(r.emb) ? 'MP' : Number(r.emb) > Number(r.mp) ? 'EMB' : null] as const));
+  const porPagto = decidir(pagos.recordset as { pessoa: string; mp: number; emb: number }[]);
+  const porPedido = decidir(pedidos.recordset as { pessoa: string; mp: number; emb: number }[]);
+  for (const l of semPedido) {
+    const via = porPagto.get(l.pessoa as string) ?? porPedido.get(l.pessoa as string) ?? null;
+    if (!via) continue;
+    l.peloFornecedor = via;
+    l.item = via === 'MP' ? 'sem pedido: fornecedor de matéria-prima (histórico no ORGM)' : 'sem pedido: fornecedor de embalagem (histórico no ORGM)';
   }
   return linhas;
 }
@@ -195,7 +247,8 @@ export async function buscarPagamentosConta(ano: number, mes: number, conta: str
         historico: String(l.historico ?? '').trim(),
         empresa: String(l.EmpresaNome ?? '').trim(),
         valor: l.valor,
-        pedido: l.pedido,
+        pedido: l.pedidoExiste,
+        item: l.item,
       });
     }
   }
