@@ -32,6 +32,59 @@ const COR_TIPO: Record<string, string> = { fidc: '#2563eb', banco: '#0284c7', ca
 
 const soma = (ts: TituloVencido[]) => ts.reduce((s, t) => s + t.saldo, 0);
 
+/** A planilha "INAD <VENDEDOR>" da cobrança, na tela: mesmas colunas, ordem e total do Excel. */
+function PlanilhaVendedor({ nome, ts }: { nome: string; ts: TituloVencido[] }) {
+  const repr = (v: string) => v.replace(/\(.*$/, '').replace(/\s+/g, ' ').trim().toUpperCase() || v.toUpperCase();
+  const emp = (e: string) => e.replace(/[()]/g, '').replace(/MATRIZ.*$/i, '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const linhas = [...ts].sort((a, b) => a.clienteFantasia.localeCompare(b.clienteFantasia) || a.vencimento.localeCompare(b.vencimento));
+  const cab = ['Representante', 'NF', 'Cliente', 'Emissão', 'Venc.', 'Valor', 'Cidade', 'Empresa', 'Descrição bancária'];
+  const td = 'whitespace-nowrap border border-border-muted px-2 py-1';
+  return (
+    <div className="overflow-x-auto rounded-md border border-border-muted bg-surface-container-lowest">
+      <div className="border-b border-border-muted bg-[#D0CECE] px-3 py-2 text-center text-body font-bold text-[#111]">INADIMPLÊNCIA {repr(nome)}</div>
+      <table className="w-full text-body-sm">
+        <thead>
+          <tr>
+            {cab.map((c, i) => (
+              <th key={c} className={`${td} text-label font-semibold uppercase text-on-surface ${i === 5 ? 'text-right' : 'text-center'}`}>
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((t) => (
+            <tr key={t.finMovId} className="hover:bg-primary/5">
+              <td className={`${td} text-center`}>{repr(t.vendedor)}</td>
+              <td className={`${td} text-center tabular-nums`}>{t.documento}</td>
+              <td className={`${td} text-center`} title={`${t.cliente} · ${t.cnpj}`}>
+                {t.clienteFantasia}
+              </td>
+              <td className={`${td} text-center tabular-nums`}>{br(t.emissao)}</td>
+              <td className={`${td} text-center tabular-nums ${t.dias > 90 ? 'font-semibold text-error' : ''}`} title={`${t.dias} dias de atraso`}>
+                {br(t.vencimento)}
+              </td>
+              <td className={`${td} text-right tabular-nums`}>{moeda(t.saldo)}</td>
+              <td className={`${td} text-center`}>{t.cidade.toUpperCase()}</td>
+              <td className={`${td} text-center`}>{emp(t.empresa)}</td>
+              <td className={`${td} text-center`} title={t.carteira}>
+                {t.descricao}
+              </td>
+            </tr>
+          ))}
+          <tr className="font-semibold">
+            <td colSpan={5} className={`${td} text-right`}>
+              TOTAL ({linhas.length} título{linhas.length === 1 ? '' : 's'})
+            </td>
+            <td className={`${td} text-right tabular-nums`}>{moeda(soma(linhas))}</td>
+            <td colSpan={3} className={td} />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Indicador({ rotulo, valor, detalhe, alerta }: { rotulo: string; valor: string; detalhe?: string; alerta?: boolean }) {
   return (
     <Card className="p-4">
@@ -322,6 +375,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     if (formato === 'zip') q.set('formato', 'zip');
     return `/api/inadimplencia/cobranca?${q.toString()}`;
   };
+  const [vendAberto, setVendAberto] = useState<string | null>(null);
   const selecionados = porVendedor.filter((v) => marcadosVend.has(v.cod));
   const totalSelecionado = selecionados.reduce((s, v) => s + v.total, 0);
   const botaoBaixar = (href: string, rotulo = 'Baixar planilha') => (
@@ -640,6 +694,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
           <table className="w-full text-body-sm">
             <thead>
               <tr className="text-label uppercase text-on-surface-variant">
+                <th className="w-8 py-2 pl-3" />
                 <th className="w-10 px-4 py-2">
                   <input
                     type="checkbox"
@@ -668,11 +723,25 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
             </thead>
             <tbody>
               {vendNaTela.map((v) => (
+                <Fragment key={v.cod}>
                 <tr
-                  key={v.cod}
-                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.vendedor === v.cod ? 'bg-primary/10' : marcadosVend.has(v.cod) ? 'bg-primary/5' : ''}`}
+                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.vendedor === v.cod ? 'bg-primary/10' : marcadosVend.has(v.cod) || vendAberto === v.cod ? 'bg-primary/5' : ''}`}
                   onClick={() => v.cod !== 'SEM' && escolherVendedor(v.cod, v.nome)}
                 >
+                  <td className="py-1.5 pl-3" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setVendAberto(vendAberto === v.cod ? null : v.cod)}
+                      aria-expanded={vendAberto === v.cod}
+                      aria-label={`${vendAberto === v.cod ? 'Fechar' : 'Abrir'} a planilha de ${v.nome}`}
+                      title={vendAberto === v.cod ? 'Fechar' : 'Ver a planilha na tela'}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-primary/10"
+                    >
+                      <svg viewBox="0 0 20 20" className={`h-4 w-4 transition-transform ${vendAberto === v.cod ? 'rotate-90' : ''}`} fill="currentColor" aria-hidden>
+                        <path d="M7 4l7 6-7 6V4z" />
+                      </svg>
+                    </button>
+                  </td>
                   <td className="px-4 py-1.5" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
@@ -692,6 +761,14 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
                   <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(v.total)}</td>
                   <td className="px-4 py-1.5 text-right">{botaoBaixar(linkSelecionados('abas', [v.cod]), 'Baixar só este')}</td>
                 </tr>
+                {vendAberto === v.cod && (
+                  <tr className="bg-surface-container-low/60">
+                    <td colSpan={11} className="p-3">
+                      <PlanilhaVendedor nome={v.nome} ts={v.ts} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
