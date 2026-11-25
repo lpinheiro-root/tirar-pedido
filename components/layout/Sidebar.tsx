@@ -64,7 +64,7 @@ export function Sidebar({
                 href={link.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-all duration-200 ease-out ${
                   active
-                    ? 'bg-gradient-to-r from-blue-600 to-pink-500 text-white shadow-lg shadow-pink-500/25'
+                    ? 'bg-gradient-to-r from-blue-700 to-blue-500 text-white shadow-lg shadow-blue-500/30'
                     : 'text-on-surface hover:-translate-y-0.5 hover:translate-x-1 hover:scale-[1.03] hover:bg-white hover:text-primary hover:shadow-md hover:shadow-blue-500/15 active:scale-95'
                 }`}
               >

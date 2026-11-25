@@ -37,7 +37,7 @@ type Aba = (typeof ABAS)[number]['id'];
 const COR: Record<Categoria, string> = {
   embalagem: 'bg-sky-100 text-sky-800',
   materia_prima: 'bg-amber-100 text-amber-800',
-  frete: 'bg-pink-100 text-pink-800',
+  frete: 'bg-indigo-100 text-indigo-800',
   outras: 'bg-surface-container text-on-surface-variant',
 };
 const ROTULO = Object.fromEntries(CATEGORIAS.map((c) => [c.id, c.rotulo])) as Record<Categoria, string>;
