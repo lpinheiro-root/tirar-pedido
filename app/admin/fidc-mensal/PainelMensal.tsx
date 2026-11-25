@@ -360,7 +360,7 @@ export function PainelMensal({ meses, linhas, ops }: { meses: MesRisco[]; linhas
         )}
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Indicador rotulo="Risco total" valor={curto(s.total)} detalhe={<Variacao atual={s.total} anterior={sAnt?.total ?? null} />} />
         <Indicador rotulo="A vencer" valor={curto(s.aVencer)} detalhe={moeda(s.aVencer)} />
         <Indicador rotulo="Vencidos" valor={moeda(s.vencidos)} detalhe={`${pct(s.total ? s.vencidos / s.total : 0, 2)} do risco`} alerta={s.vencidos > 0} />

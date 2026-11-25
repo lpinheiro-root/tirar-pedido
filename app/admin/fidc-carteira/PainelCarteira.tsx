@@ -307,7 +307,7 @@ export function PainelCarteira({ borderos }: { borderos: BorderoLista[] }) {
         )}
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card className="p-4">
           <p className="text-label uppercase text-on-surface-variant">Borderôs</p>
           <p className="mt-1 text-h2 tabular-nums text-on-surface">{filtrados.length}</p>

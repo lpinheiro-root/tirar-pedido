@@ -710,7 +710,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
         </p>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Indicador rotulo="Total vencido" valor={curto(total)} detalhe={moeda(total)} alerta={total > 0} />
         <Indicador rotulo="Títulos" valor={lista.length.toLocaleString('pt-BR')} detalhe={`${clientes.toLocaleString('pt-BR')} clientes`} />
         <Indicador rotulo="Em FIDC" valor={curto(emFidc)} detalhe={total ? `${pct(emFidc / total)} do vencido · risco de recompra` : '—'} />

@@ -163,7 +163,7 @@ export default async function ContasPagarPage({
         <Card className="p-6 text-body-sm text-error">{erro}</Card>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="kpi-grid mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             {[
               { t: 'Valor original', v: geral.valor, c: 'text-on-surface' },
               { t: 'Pago', v: geral.pago, c: 'text-green-700' },

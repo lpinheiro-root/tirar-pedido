@@ -11,3 +11,94 @@
     @apply bg-background text-on-background;
   }
 }
+
+/* ---- Visual mais vivo (claro), no estilo dos dashboards coloridos ---- */
+@layer base {
+  body {
+    background: radial-gradient(1200px 600px at 100% -10%, #e0e7ff 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, #fce7f3 0%, transparent 55%), #f5f7ff;
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  /* Botões principais: degradê azul → roxo, sombra colorida e "pulinho" ao passar o mouse */
+  a.bg-primary,
+  button.bg-primary {
+    background-image: linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
+    box-shadow: 0 6px 16px -6px rgba(79, 70, 229, 0.6);
+    font-weight: 600;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+  }
+  a.bg-primary:hover,
+  button.bg-primary:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 10px 22px -6px rgba(79, 70, 229, 0.7);
+    filter: brightness(1.08);
+  }
+  a.bg-primary:active,
+  button.bg-primary:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+
+  /* Botões de contorno: também pulam e ganham fundo claro */
+  a.border-primary,
+  button.border-primary {
+    font-weight: 600;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  }
+  a.border-primary:hover,
+  button.border-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px -8px rgba(37, 99, 235, 0.55);
+    background-color: #eef2ff;
+  }
+
+  /* KPIs coloridos (verde-água, amarelo, rosa, lilás, azul…), sobem ao passar o mouse */
+  .kpi-grid > * {
+    --kpi-a: #ccfbf1;
+    --kpi-b: #5eead4;
+    --kpi-s: rgba(20, 184, 166, 0.35);
+    border-color: transparent !important;
+    background-color: transparent !important;
+    background-image: linear-gradient(135deg, var(--kpi-a) 0%, var(--kpi-b) 100%);
+    box-shadow: 0 8px 20px -10px var(--kpi-s);
+    border-radius: 1.25rem !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .kpi-grid > *:nth-child(6n + 2) {
+    --kpi-a: #fef9c3;
+    --kpi-b: #fcd34d;
+    --kpi-s: rgba(245, 158, 11, 0.4);
+  }
+  .kpi-grid > *:nth-child(6n + 3) {
+    --kpi-a: #fce7f3;
+    --kpi-b: #f9a8d4;
+    --kpi-s: rgba(236, 72, 153, 0.35);
+  }
+  .kpi-grid > *:nth-child(6n + 4) {
+    --kpi-a: #ede9fe;
+    --kpi-b: #c4b5fd;
+    --kpi-s: rgba(139, 92, 246, 0.35);
+  }
+  .kpi-grid > *:nth-child(6n + 5) {
+    --kpi-a: #e0f2fe;
+    --kpi-b: #7dd3fc;
+    --kpi-s: rgba(14, 165, 233, 0.35);
+  }
+  .kpi-grid > *:nth-child(6n + 6) {
+    --kpi-a: #ffedd5;
+    --kpi-b: #fdba74;
+    --kpi-s: rgba(249, 115, 22, 0.35);
+  }
+  .kpi-grid > *:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 16px 28px -12px var(--kpi-s);
+  }
+  .kpi-grid > * .text-on-surface-variant {
+    color: #334155;
+  }
+  .kpi-grid > * .text-on-surface {
+    color: #0f172a;
+  }
+}

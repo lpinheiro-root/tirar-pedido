@@ -27,7 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   ];
 
   return (
-    <div className="flex min-h-screen bg-surface">
+    <div className="flex min-h-screen">
       <Sidebar
         links={links}
         titulo="Natuhair"

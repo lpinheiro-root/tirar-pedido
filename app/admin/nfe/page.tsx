@@ -199,7 +199,7 @@ function Filtro({ aba, f, empresas }: { aba: Aba; f: Filtros; empresas: Map<stri
 
 function Kpis({ itens }: { itens: { t: string; v: string; c?: string; d?: string }[] }) {
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="kpi-grid mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
       {itens.map((k) => (
         <Card key={k.t} className="p-4">
           <p className="text-label uppercase text-on-surface-variant">{k.t}</p>

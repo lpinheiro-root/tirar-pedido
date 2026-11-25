@@ -132,7 +132,7 @@ export function ConciliacaoEcommerce() {
 
       {r && resposta && (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="kpi-grid grid grid-cols-2 gap-4 lg:grid-cols-4">
             {[
               { t: 'Total da planilha', v: moeda(r.totais.planilha), c: 'text-on-surface' },
               { t: `Conciliado (${r.conciliados.length - naoAchados.length})`, v: moeda(r.totais.conciliado), c: 'text-green-700' },

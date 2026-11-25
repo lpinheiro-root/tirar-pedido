@@ -1182,7 +1182,7 @@ export function PainelFidc({ operacoes, ultima }: { operacoes: Operacao[]; ultim
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="kpi-grid grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
             {kpis.map((k) => (
               <Card key={k.t} className="p-4">
                 <p className="text-label uppercase text-on-surface-variant">{k.t}</p>

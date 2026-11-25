@@ -195,7 +195,7 @@ export default async function FaturaPage({
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="kpi-grid mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Card className="p-4">
           <p className="text-label uppercase text-on-surface-variant">Total da fatura</p>
           <p className="mt-1 text-h2 text-on-surface">
@@ -316,7 +316,7 @@ function LadoALadoMercadoLivre({
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="kpi-grid mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
             t: `Na fatura (${lancamentos.length})`,
