@@ -1,4 +1,4 @@
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireRelatorioGerencial } from '@/lib/auth';
 import { PageHeading } from '@/components/layout/Header';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { buscarContasAno } from '@/lib/gerencial/dados';
@@ -10,7 +10,7 @@ export const maxDuration = 120;
 
 /** Relatório Gerencial (DG): despesas pagas no mês por rubrica, direto do ORGM, com os acertos do controle. */
 export default async function RelatorioGerencialPage({ searchParams }: { searchParams: { ano?: string } }) {
-  await requireSuperAdmin();
+  await requireRelatorioGerencial();
   const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
   const anoAtual = Number(hoje.slice(0, 4));
   const pedido = Number(searchParams.ano);

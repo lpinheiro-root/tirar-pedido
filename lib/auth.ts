@@ -62,6 +62,7 @@ export function acessos(r: Representante) {
     fidcMensal: Boolean(r.super_admin) || Boolean(r.acesso_fidc_mensal),
     fidcCarteira: Boolean(r.super_admin) || Boolean(r.acesso_fidc_carteira),
     inadimplencia: Boolean(r.super_admin) || Boolean(r.acesso_inadimplencia),
+    relatorioGerencial: Boolean(r.super_admin) || Boolean(r.acesso_relatorio_gerencial),
   };
 }
 
@@ -76,7 +77,15 @@ export function telaInicial(r: Representante) {
   if (a.fidc) return '/admin/fidc';
   if (a.fidcMensal) return '/admin/fidc-mensal';
   if (a.fidcCarteira) return '/admin/fidc-carteira';
-  return a.inadimplencia ? '/admin/inadimplencia' : '/admin/conta';
+  if (a.inadimplencia) return '/admin/inadimplencia';
+  return a.relatorioGerencial ? '/admin/relatorio-gerencial' : '/admin/conta';
+}
+
+/** Relatório Gerencial (despesas por rubrica, do ORGM): super admin ou usuário com acesso liberado. */
+export async function requireRelatorioGerencial() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).relatorioGerencial) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** Inadimplência (títulos a receber vencidos, do ORGM): super admin ou usuário com acesso liberado. */

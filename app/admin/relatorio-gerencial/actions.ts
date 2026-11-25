@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireRelatorioGerencial } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { buscarPagamentosConta } from '@/lib/gerencial/dados';
 import { NOME_RUBRICA, type Pagamento } from '@/lib/gerencial/rubricas';
@@ -23,7 +23,7 @@ const mesValido = (m: number) => Number.isInteger(m) && m >= 1 && m <= 12;
 
 /** Faturamento, recebimento e cheque especial de um mês. */
 export async function salvarMensal(ano: number, mes: number, valores: Record<string, number>): Promise<Resultado> {
-  const { representante } = await requireSuperAdmin();
+  const { representante } = await requireRelatorioGerencial();
   if (!anoValido(ano) || !mesValido(mes)) return { erro: 'Mês inválido.' };
   const linha: Record<string, unknown> = { ano, mes, atualizado_por: representante.nome, atualizado_em: new Date().toISOString() };
   for (const c of CAMPOS_MENSAL) {
@@ -46,7 +46,7 @@ export async function criarAjuste(dados: {
   valor: number;
   descricao: string;
 }): Promise<Resultado> {
-  const { representante } = await requireSuperAdmin();
+  const { representante } = await requireRelatorioGerencial();
   const de = dados.de || null;
   const para = dados.para || null;
   if (!anoValido(dados.ano) || !mesValido(dados.mes)) return { erro: 'Mês inválido.' };
@@ -65,7 +65,7 @@ export async function criarAjuste(dados: {
 }
 
 export async function excluirAjuste(id: number): Promise<Resultado> {
-  await requireSuperAdmin();
+  await requireRelatorioGerencial();
   const { error } = await createServiceRoleClient().from('gerencial_ajustes').delete().eq('id', id);
   if (error) return { erro: erroTabela(error.message) };
   revalidar();
@@ -74,7 +74,7 @@ export async function excluirAjuste(id: number): Promise<Resultado> {
 
 /** Em qual rubrica entra uma conta contábil (vazio = volta ao padrão do sistema). */
 export async function definirRubrica(conta: string, rubrica: string): Promise<Resultado> {
-  const { representante } = await requireSuperAdmin();
+  const { representante } = await requireRelatorioGerencial();
   const db = createServiceRoleClient();
   if (!conta || conta.length > 40) return { erro: 'Conta inválida.' };
   const { error } = rubrica
@@ -89,7 +89,7 @@ export async function definirRubrica(conta: string, rubrica: string): Promise<Re
 
 /** Parâmetro (% sobre o faturamento) de uma rubrica; null volta ao padrão. */
 export async function salvarParametro(rubrica: string, percentual: number | null): Promise<Resultado> {
-  const { representante } = await requireSuperAdmin();
+  const { representante } = await requireRelatorioGerencial();
   if (!NOME_RUBRICA.has(rubrica)) return { erro: 'Rubrica inválida.' };
   const db = createServiceRoleClient();
   const { error } =
@@ -107,7 +107,7 @@ export async function salvarParametro(rubrica: string, percentual: number | null
 
 /** Pagamentos que formam o valor de uma conta num mês. */
 export async function detalheConta(ano: number, mes: number, conta: string): Promise<{ erro?: string; linhas?: Pagamento[] }> {
-  await requireSuperAdmin();
+  await requireRelatorioGerencial();
   if (!anoValido(ano) || !mesValido(mes)) return { erro: 'Mês inválido.' };
   try {
     return { linhas: await buscarPagamentosConta(ano, mes, conta) };

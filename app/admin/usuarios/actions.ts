@@ -37,6 +37,7 @@ export async function criarUsuario(
   const acessoFidcMensal = formData.get('acesso_fidc_mensal') === 'on';
   const acessoFidcCarteira = formData.get('acesso_fidc_carteira') === 'on';
   const acessoInadimplencia = formData.get('acesso_inadimplencia') === 'on';
+  const acessoGerencial = formData.get('acesso_relatorio_gerencial') === 'on';
 
   if (!nome || !email) return { erro: 'Preencha nome e e-mail.' };
   if (
@@ -48,9 +49,10 @@ export async function criarUsuario(
     !acessoFidc &&
     !acessoFidcMensal &&
     !acessoFidcCarteira &&
-    !acessoInadimplencia
+    !acessoInadimplencia &&
+    !acessoGerencial
   ) {
-    return { erro: 'Marque pelo menos um acesso (Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar, NFE, FIDC, Mensal FIDC, Carteira FIDC ou Inadimplência).' };
+    return { erro: 'Marque pelo menos um acesso (Cartão, NF-e Recebidas, E-Commerce, Contas a Pagar, NFE, FIDC, Mensal FIDC, Carteira FIDC, Inadimplência ou Relatório Gerencial).' };
   }
   if (senha.length < SENHA_MINIMA) return { erro: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` };
   if (senha !== confirmacao) return { erro: 'A confirmação não confere com a senha.' };
@@ -85,6 +87,8 @@ export async function criarUsuario(
     ...(acessoFidcCarteira ? { acesso_fidc_carteira: true } : {}),
     // a coluna só existe depois do supabase/inadimplencia.sql
     ...(acessoInadimplencia ? { acesso_inadimplencia: true } : {}),
+    // a coluna só existe depois do supabase/acesso_relatorio_gerencial.sql
+    ...(acessoGerencial ? { acesso_relatorio_gerencial: true } : {}),
   });
   if (erroInsert) {
     await service.auth.admin.deleteUser(data.user.id);
@@ -93,6 +97,9 @@ export async function criarUsuario(
     }
     if (erroInsert.message.includes('acesso_nfe')) {
       return { erro: 'Falta rodar o supabase/acesso_nfe.sql no Supabase para liberar a NFE.' };
+    }
+    if (erroInsert.message.includes('acesso_relatorio_gerencial')) {
+      return { erro: 'Falta rodar o supabase/acesso_relatorio_gerencial.sql no Supabase para liberar o Relatório Gerencial.' };
     }
     if (erroInsert.message.includes('acesso_inadimplencia')) {
       return { erro: 'Falta rodar o supabase/inadimplencia.sql no Supabase para liberar a Inadimplência.' };
@@ -133,7 +140,7 @@ export async function alternarAtivoUsuario(id: string, ativo: boolean): Promise<
 /** Libera ou retira o acesso a uma tela: Cartão ou NF-e Recebidas (controle de devoluções). */
 export async function alternarAcesso(
   id: string,
-  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe' | 'fidc' | 'fidc_mensal' | 'fidc_carteira' | 'inadimplencia',
+  tela: 'cartao' | 'devolucoes' | 'ecommerce' | 'contas_pagar' | 'nfe' | 'fidc' | 'fidc_mensal' | 'fidc_carteira' | 'inadimplencia' | 'relatorio_gerencial',
   acesso: boolean
 ): Promise<{ erro?: string }> {
   await requireSuperAdmin();
