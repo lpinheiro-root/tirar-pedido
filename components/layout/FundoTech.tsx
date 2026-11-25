@@ -11,22 +11,22 @@ const TRILHAS = [
 export function FundoTech() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden print:hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,#f3f6ff_0%,#f5f7ff_55%,#f1f5ff_100%)]" />
-      <div className="absolute -right-24 -top-32 h-[480px] w-[480px] rounded-full bg-[#6366f1]/25 blur-[110px]" />
-      <div className="absolute -bottom-40 left-40 h-[440px] w-[440px] rounded-full bg-[#38bdf8]/25 blur-[110px]" />
-      <div className="absolute left-1/2 top-1/3 h-[320px] w-[320px] rounded-full bg-[#a855f7]/12 blur-[110px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,#d9e4fb_0%,#e3eafa_45%,#f4dfeb_100%)]" />
+      <div className="absolute -right-24 -top-32 h-[480px] w-[480px] rounded-full bg-[#3b82f6]/45 blur-[110px]" />
+      <div className="absolute -bottom-40 left-40 h-[440px] w-[440px] rounded-full bg-[#e0157a]/30 blur-[110px]" />
+      <div className="absolute left-1/2 top-1/3 h-[320px] w-[320px] rounded-full bg-[#38bdf8]/25 blur-[110px]" />
       <div className="fundo-tech-grade absolute inset-0" />
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
         <defs>
           <linearGradient id="fundoTechTrilha" x1="0" x2="1">
             <stop offset="0%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#4f46e5" />
+            <stop offset="100%" stopColor="#e0157a" />
           </linearGradient>
         </defs>
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
           {TRILHAS.map((d, i) => (
             <g key={i}>
-              <path d={d} stroke="#4f46e5" strokeOpacity="0.22" strokeWidth="1.5" />
+              <path d={d} stroke="#2563eb" strokeOpacity="0.22" strokeWidth="1.5" />
               <path
                 d={d}
                 stroke="url(#fundoTechTrilha)"

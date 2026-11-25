@@ -11,7 +11,7 @@ export function Header({
   usuario?: { nome: string; email: string; foto?: string | null; contaHref: string };
 }) {
   return (
-    <header className="flex print:hidden sticky top-0 z-40 h-[72px] shrink-0 items-center justify-between border-b border-white/60 bg-white/50 px-8 backdrop-blur-xl">
+    <header className="flex print:hidden sticky top-0 z-40 h-[72px] shrink-0 items-center justify-between border-b border-white/60 bg-white/35 px-8 backdrop-blur-xl">
       <div className="flex-1" />
       <div className="flex items-center gap-3">
         {rightSlot}

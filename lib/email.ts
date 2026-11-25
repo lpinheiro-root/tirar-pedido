@@ -29,7 +29,7 @@ export async function enviarEmailPedido({
   const subject = `Novo pedido #${pedidoId.slice(0, 8)} — ${clienteNome}`;
   const html = `
     <div style="font-family: Inter, Arial, sans-serif; color: #121c2a;">
-      <h2 style="color: #7c3aed;">Novo pedido recebido</h2>
+      <h2 style="color: #1d4ed8;">Novo pedido recebido</h2>
       <p><strong>Pedido:</strong> ${pedidoId}</p>
       <p><strong>Cliente:</strong> ${clienteNome}</p>
       <p><strong>Representante:</strong> ${representanteNome} (${representanteEmail})</p>

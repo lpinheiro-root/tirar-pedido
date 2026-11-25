@@ -23,11 +23,11 @@
 
 /* Fundo "tecnologia" (components/layout/FundoTech.tsx) */
 .fundo-tech-grade {
-  background-image: linear-gradient(rgba(79, 70, 229, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 70, 229, 0.09) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(37, 99, 235, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.14) 1px, transparent 1px);
   background-size: 40px 40px;
-  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, transparent 20%, #000 75%);
-  mask-image: radial-gradient(ellipse at 50% 40%, transparent 20%, #000 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0.45) 10%, #000 70%);
+  mask-image: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0.45) 10%, #000 70%);
 }
 .fundo-tech-pulso {
   stroke-dasharray: 50 900;
@@ -42,18 +42,18 @@
 }
 
 @layer components {
-  /* Botões principais: degradê azul → roxo, sombra colorida e "pulinho" ao passar o mouse */
+  /* Botões principais: degradê azul → rosa (cores da Natuhair), sombra colorida e "pulinho" ao passar o mouse */
   a.bg-primary,
   button.bg-primary {
-    background-image: linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
-    box-shadow: 0 6px 16px -6px rgba(79, 70, 229, 0.6);
+    background-image: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #e0157a 100%);
+    box-shadow: 0 6px 16px -6px rgba(29, 78, 216, 0.55);
     font-weight: 600;
     transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
   }
   a.bg-primary:hover,
   button.bg-primary:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.03);
-    box-shadow: 0 10px 22px -6px rgba(79, 70, 229, 0.7);
+    box-shadow: 0 10px 22px -6px rgba(224, 21, 122, 0.5);
     filter: brightness(1.08);
   }
   a.bg-primary:active,
@@ -71,14 +71,14 @@
   button.border-primary:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 8px 18px -8px rgba(37, 99, 235, 0.55);
-    background-color: #eef2ff;
+    background-color: #eff5ff;
   }
 
-  /* KPIs coloridos (verde-água, amarelo, rosa, lilás, azul…), sobem ao passar o mouse */
+  /* KPIs em azul e rosa (cores da Natuhair), alternados; sobem ao passar o mouse */
   .kpi-grid > * {
-    --kpi-a: #ccfbf1;
-    --kpi-b: #5eead4;
-    --kpi-s: rgba(20, 184, 166, 0.35);
+    --kpi-a: #dbeafe;
+    --kpi-b: #93c5fd;
+    --kpi-s: rgba(37, 99, 235, 0.35);
     border-color: transparent !important;
     background-color: transparent !important;
     background-image: linear-gradient(135deg, var(--kpi-a) 0%, var(--kpi-b) 100%);
@@ -87,29 +87,29 @@
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   .kpi-grid > *:nth-child(6n + 2) {
-    --kpi-a: #fef9c3;
-    --kpi-b: #fcd34d;
-    --kpi-s: rgba(245, 158, 11, 0.4);
-  }
-  .kpi-grid > *:nth-child(6n + 3) {
     --kpi-a: #fce7f3;
     --kpi-b: #f9a8d4;
-    --kpi-s: rgba(236, 72, 153, 0.35);
+    --kpi-s: rgba(224, 21, 122, 0.3);
   }
-  .kpi-grid > *:nth-child(6n + 4) {
-    --kpi-a: #ede9fe;
-    --kpi-b: #c4b5fd;
-    --kpi-s: rgba(139, 92, 246, 0.35);
-  }
-  .kpi-grid > *:nth-child(6n + 5) {
+  .kpi-grid > *:nth-child(6n + 3) {
     --kpi-a: #e0f2fe;
     --kpi-b: #7dd3fc;
     --kpi-s: rgba(14, 165, 233, 0.35);
   }
+  .kpi-grid > *:nth-child(6n + 4) {
+    --kpi-a: #fdf2f8;
+    --kpi-b: #fbcfe8;
+    --kpi-s: rgba(236, 72, 153, 0.3);
+  }
+  .kpi-grid > *:nth-child(6n + 5) {
+    --kpi-a: #e0e9ff;
+    --kpi-b: #a5c4fd;
+    --kpi-s: rgba(29, 78, 216, 0.3);
+  }
   .kpi-grid > *:nth-child(6n + 6) {
-    --kpi-a: #ffedd5;
-    --kpi-b: #fdba74;
-    --kpi-s: rgba(249, 115, 22, 0.35);
+    --kpi-a: #ffe4ef;
+    --kpi-b: #f8b4d0;
+    --kpi-s: rgba(219, 39, 119, 0.3);
   }
   .kpi-grid > *:hover {
     transform: translateY(-4px) scale(1.02);

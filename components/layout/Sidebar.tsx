@@ -31,7 +31,7 @@ export function Sidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 print:hidden shrink-0 flex-col justify-between border-r border-white/70 bg-white/60 shadow-[8px_0_30px_-20px_rgba(79,70,229,0.35)] backdrop-blur-xl">
+    <aside className="sticky top-0 flex h-screen w-64 print:hidden shrink-0 flex-col justify-between border-r border-white/70 bg-white/40 shadow-[8px_0_30px_-20px_rgba(79,70,229,0.35)] backdrop-blur-xl">
       <div className="min-h-0 overflow-y-auto">
         <div className="flex flex-col items-center gap-2 px-6 pb-5 pt-6">
           {logo ? (
@@ -64,7 +64,7 @@ export function Sidebar({
                 href={link.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-all duration-200 ease-out ${
                   active
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/30'
+                    ? 'bg-gradient-to-r from-blue-600 to-pink-500 text-white shadow-lg shadow-pink-500/25'
                     : 'text-on-surface hover:-translate-y-0.5 hover:translate-x-1 hover:scale-[1.03] hover:bg-white hover:text-primary hover:shadow-md hover:shadow-blue-500/15 active:scale-95'
                 }`}
               >

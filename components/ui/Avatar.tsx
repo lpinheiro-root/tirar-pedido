@@ -15,7 +15,7 @@ export function Avatar({ nome, foto, tamanho = 'md' }: { nome: string; foto?: st
 
   return (
     <div
-      className={`${lado} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 font-semibold text-white shadow-md ring-2 ring-white`}
+      className={`${lado} flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-pink-500 font-semibold text-white shadow-md ring-2 ring-white`}
     >
       {iniciais || '?'}
     </div>
