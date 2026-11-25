@@ -21,6 +21,26 @@
   }
 }
 
+/* Fundo "tecnologia" (components/layout/FundoTech.tsx) */
+.fundo-tech-grade {
+  background-image: linear-gradient(rgba(79, 70, 229, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.09) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, transparent 20%, #000 75%);
+  mask-image: radial-gradient(ellipse at 50% 40%, transparent 20%, #000 75%);
+}
+.fundo-tech-pulso {
+  stroke-dasharray: 50 900;
+  animation: fundo-tech-pulso 9s linear infinite;
+}
+@keyframes fundo-tech-pulso {
+  from { stroke-dashoffset: 950; }
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fundo-tech-pulso { animation: none; }
+}
+
 @layer components {
   /* Botões principais: degradê azul → roxo, sombra colorida e "pulinho" ao passar o mouse */
   a.bg-primary,

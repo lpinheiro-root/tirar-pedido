@@ -2,6 +2,7 @@ import { acessos, requireRepresentante } from '@/lib/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
+import { FundoTech } from '@/components/layout/FundoTech';
 import { IconAlert, IconBank, IconCart, IconChart, IconCreditCard, IconDocument, IconReceipt, IconUsers, IconWallet } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,7 +28,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   ];
 
   return (
-    <div className="flex min-h-screen">
+    <div className="relative isolate flex min-h-screen">
+      <FundoTech />
       <Sidebar
         links={links}
         titulo="Natuhair"

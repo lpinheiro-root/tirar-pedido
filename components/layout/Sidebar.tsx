@@ -31,7 +31,7 @@ export function Sidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 print:hidden shrink-0 flex-col justify-between border-r border-white/60 bg-white/80 backdrop-blur">
+    <aside className="sticky top-0 flex h-screen w-64 print:hidden shrink-0 flex-col justify-between border-r border-white/70 bg-white/60 shadow-[8px_0_30px_-20px_rgba(79,70,229,0.35)] backdrop-blur-xl">
       <div className="min-h-0 overflow-y-auto">
         <div className="flex flex-col items-center gap-2 px-6 pb-5 pt-6">
           {logo ? (
