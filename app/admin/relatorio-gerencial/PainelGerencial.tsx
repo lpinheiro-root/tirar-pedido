@@ -134,7 +134,7 @@ export function PainelGerencial({
           ['Faturamento no ano', brl(fatAno)],
           ['Despesas ÷ faturamento', pctOu(pctFat(total))],
           ['Recebimento no ano', brl(recebAno)],
-          ['Contas sem rubrica', semRubrica.length ? `${semRubrica.length} · ${brl(soma(semRubrica.map((c) => soma(c.v))))}` : 'nenhuma'],
+          ['Sem conta contábil', semRubrica.length ? `${semRubrica.length} · ${brl(soma(semRubrica.map((c) => soma(c.v))))}` : 'nenhuma'],
         ].map(([t, v]) => (
           <Card key={t} className="p-4">
             <p className="text-label font-semibold text-on-surface-variant">{t}</p>
@@ -146,9 +146,9 @@ export function PainelGerencial({
       {semRubrica.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/80 p-4">
           <p className="text-body font-bold text-amber-900">
-            Pagamentos que ainda não têm rubrica. Eles entram no total de despesas, mas não em nenhuma linha.
+            Pagamentos que ainda não têm conta contábil. Eles entram no total de despesas, mas não em nenhuma linha.
           </p>
-          <p className="mt-1 text-body-sm text-amber-900">Clique na setinha para abrir os pagamentos e escolher a rubrica de cada um, na última coluna.</p>
+          <p className="mt-1 text-body-sm text-amber-900">Clique na setinha para abrir os pagamentos e escolher a conta contábil de cada um, na última coluna.</p>
           <div className="mt-3 space-y-1">
             {semRubrica.map((c) => (
               <div key={c.conta}>
@@ -184,7 +184,7 @@ export function PainelGerencial({
           <table className="w-full border-collapse text-body-sm">
             <thead>
               <tr className="bg-primary text-white">
-                <th className="sticky left-0 z-10 min-w-[260px] bg-primary px-3 py-2 text-left">Rubrica</th>
+                <th className="sticky left-0 z-10 min-w-[260px] bg-primary px-3 py-2 text-left">Conta contábil</th>
                 {colunas.map((i) => (
                   <th key={i} className={`px-2 py-2 text-right ${i >= ultimoMesFechado ? 'opacity-70' : ''}`}>
                     {MESES[i]}/{String(ano).slice(2)}
@@ -278,7 +278,7 @@ export function PainelGerencial({
                                   <span className="rounded bg-blue-100 px-1 text-primary">escolhido por pagamento (clique no valor para ver)</span>
                                 ) : (
                                   <>
-                                    {c.trocada && <span className="rounded bg-amber-100 px-1 text-amber-800">rubrica trocada</span>}
+                                    {c.trocada && <span className="rounded bg-amber-100 px-1 text-amber-800">conta trocada</span>}
                                     <SeletorRubrica
                                       pequeno
                                       valor={r.cod}
@@ -337,14 +337,14 @@ export function PainelGerencial({
                                 className="rounded-lg border border-primary px-3 py-1 font-semibold text-primary"
                                 onClick={() => setNovoAjuste({ mes: Math.max(ultimoMesFechado, 1), de: r.cod, para: '' })}
                               >
-                                Ajuste tirando desta rubrica
+                                Ajuste tirando desta conta
                               </button>
                               <button
                                 type="button"
                                 className="rounded-lg border border-primary px-3 py-1 font-semibold text-primary"
                                 onClick={() => setNovoAjuste({ mes: Math.max(ultimoMesFechado, 1), de: '', para: r.cod })}
                               >
-                                Ajuste colocando nesta rubrica
+                                Ajuste colocando nesta conta
                               </button>
                             </div>
                           </td>
@@ -357,7 +357,7 @@ export function PainelGerencial({
 
               {semRubrica.length > 0 && (
                 <tr className="border-b border-border-muted bg-amber-50 text-amber-900">
-                  <td className="sticky left-0 z-10 bg-amber-50 px-3 py-1.5 font-semibold">Sem rubrica (ver aviso acima)</td>
+                  <td className="sticky left-0 z-10 bg-amber-50 px-3 py-1.5 font-semibold">Sem conta contábil (ver aviso acima)</td>
                   {colunas.map((i) => (
                     <td key={i} className="px-2 py-1.5 text-right">
                       {n0((porRub.get('') ?? zeros())[i])}
@@ -407,8 +407,8 @@ export function PainelGerencial({
         </div>
         <p className="px-4 py-2 text-label text-on-surface-variant">
           Despesa = valor pago no mês (data do pagamento), como no relatório do ORGM &quot;pagamentos por conta contábil&quot;. Média e projeção usam os {fechados.length} meses fechados; % s/ faturamento só os meses com faturamento lançado
-          ({mesesFat.map((i) => MESES[i]).join(', ') || 'nenhum'}). Clique numa rubrica para ver as contas, trocar a rubrica de uma conta, mudar o parâmetro ou lançar ajuste; clique num
-          valor da conta para ver os pagamentos.
+          ({mesesFat.map((i) => MESES[i]).join(', ') || 'nenhum'}). Clique numa conta contábil para ver de onde vem o valor, mudar o parâmetro ou lançar ajuste; clique num
+          valor para ver os pagamentos e trocar a conta contábil de cada um.
         </p>
       </Card>
 
@@ -416,7 +416,7 @@ export function PainelGerencial({
       <Card className="p-4">
         <p className="text-h2 font-extrabold text-on-surface">Ajustes lançados em {ano}</p>
         {ajustes.length === 0 ? (
-          <p className="mt-2 text-body-sm text-on-surface-variant">Nenhum ajuste. Use &quot;Novo ajuste&quot; para tirar valor de uma rubrica e colocar em outra.</p>
+          <p className="mt-2 text-body-sm text-on-surface-variant">Nenhum ajuste. Use &quot;Novo ajuste&quot; para tirar valor de uma conta contábil e colocar em outra.</p>
         ) : (
           <table className="mt-3 w-full text-body-sm">
             <thead>
@@ -502,7 +502,7 @@ function SeletorRubrica({ valor, onTrocar, desabilitado, pequeno }: { valor: str
       onChange={(e) => onTrocar(e.target.value)}
       className={`rounded-lg border border-border-muted bg-white ${pequeno ? 'max-w-[170px] px-1 py-0 text-[11px]' : 'px-2 py-1 text-body-sm'}`}
     >
-      {!valor && <option value="">Escolher rubrica…</option>}
+      {!valor && <option value="">Escolher conta contábil…</option>}
       {RUBRICAS.map((r) => (
         <option key={r.cod} value={r.cod}>
           {r.cod} {r.nome}
@@ -670,11 +670,11 @@ function JanelaAjuste({
           </select>
         </label>
         <label className="block font-semibold">
-          Sai da rubrica
+          Sai da conta contábil
           {sel(de, setDe, '(nenhuma: só acrescenta)')}
         </label>
         <label className="block font-semibold">
-          Entra na rubrica
+          Entra na conta contábil
           {sel(para, setPara, '(nenhuma: só retira)')}
         </label>
         <label className="block font-semibold">
@@ -754,7 +754,7 @@ function ListaPagamentos({
             {temPedido && <th>Pedido de compra / item</th>}
             <th>Empresa</th>
             <th className="text-right">Valor</th>
-            <th className="pl-3">Rubrica deste pagamento</th>
+            <th className="pl-3">Conta contábil deste pagamento</th>
           </tr>
         </thead>
         <tbody>
@@ -778,7 +778,7 @@ function ListaPagamentos({
                   onChange={(e) => onEscolher(l, e.target.value)}
                   className={`max-w-[220px] rounded-lg border px-1 py-0.5 text-[12px] ${escolhas[`${l.finMovId}|${conta}`] ? 'border-primary bg-blue-50 font-semibold text-primary' : 'border-border-muted bg-white'}`}
                 >
-                  <option value="">{rubricaConta(conta) ? `igual à conta (${rubricaConta(conta)})` : 'Escolher rubrica…'}</option>
+                  <option value="">{rubricaConta(conta) ? `igual à conta (${rubricaConta(conta)})` : 'Escolher conta contábil…'}</option>
                   {RUBRICAS.map((r) => (
                     <option key={r.cod} value={r.cod}>
                       {r.cod} {r.nome}

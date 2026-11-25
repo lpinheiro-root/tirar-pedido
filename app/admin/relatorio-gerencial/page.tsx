@@ -31,7 +31,7 @@ export default async function RelatorioGerencialPage({ searchParams }: { searchP
     <div>
       <PageHeading
         title="Relatório Gerencial"
-        subtitle="Despesas pagas no mês por rubrica, direto do ORGM (pagamentos por conta contábil), com faturamento, parâmetros e os acertos do controle."
+        subtitle="Despesas pagas no mês por conta contábil, direto do ORGM, com faturamento, parâmetros e os acertos do controle."
       />
       {falta && <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-body-sm text-amber-900">{falta}</p>}
       {erroOrgm ? (

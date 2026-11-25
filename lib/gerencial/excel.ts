@@ -177,7 +177,7 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
         .join('; ')}`;
     }
   }
-  if (c.semRubrica.length) linhaRubrica('', 'SEM RUBRICA (contas ainda não classificadas)', c.porRub.get('') ?? zeros(), 0, AMARELO);
+  if (c.semRubrica.length) linhaRubrica('', 'SEM CONTA CONTÁBIL (pagamentos ainda não classificados)', c.porRub.get('') ?? zeros(), 0, AMARELO);
 
   // total e variação
   const totRow = linhaRubrica('', 'TOTAL GERAL DESPESAS GERADAS', c.total, RUBRICAS.reduce((s, rb) => s + c.param(rb.cod), 0), CINZA);
@@ -234,14 +234,14 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
   // aba Contas
   const wc = wb.addWorksheet('Contas', { views: [{ state: 'frozen', xSplit: 4, ySplit: 1 }] });
   wc.columns = [
-    { header: 'Rubrica', width: 9 },
-    { header: 'Nome da rubrica', width: 38 },
-    { header: 'Conta contábil', width: 15 },
-    { header: 'Nome da conta', width: 44 },
+    { header: 'Cód. conta', width: 9 },
+    { header: 'Conta contábil (relatório)', width: 38 },
+    { header: 'Conta no ORGM', width: 15 },
+    { header: 'Nome no ORGM', width: 44 },
     { header: 'Grupo (conta-pai)', width: 26 },
     ...MESES.map((m) => ({ header: `${m}/${aa}`, width: 13 })),
     { header: String(ano), width: 15 },
-    { header: 'Rubrica trocada no sistema', width: 14 },
+    { header: 'Trocada no sistema', width: 14 },
   ];
   wc.getRow(1).eachCell((cel) => estilo(cel, { fill: CINZA, center: true }));
   const rubs = [...RUBRICAS.map((x) => x.cod), ''];
@@ -250,7 +250,7 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
     for (const ct of contas) {
       const row = wc.addRow([
         cod || '—',
-        cod ? NOME_RUBRICA.get(cod) : 'SEM RUBRICA',
+        cod ? NOME_RUBRICA.get(cod) : 'SEM CONTA CONTÁBIL',
         ct.conta,
         ct.nome,
         ct.grupo,
@@ -268,8 +268,8 @@ export async function gerarExcelGerencial(ano: number): Promise<{ buf: ArrayBuff
   const wa = wb.addWorksheet('Ajustes', { views: [{ state: 'frozen', ySplit: 1 }] });
   wa.columns = [
     { header: 'Mês', width: 8 },
-    { header: 'Sai da rubrica', width: 44 },
-    { header: 'Entra na rubrica', width: 44 },
+    { header: 'Sai da conta contábil', width: 44 },
+    { header: 'Entra na conta contábil', width: 44 },
     { header: 'Valor', width: 15 },
     { header: 'Motivo', width: 60 },
     { header: 'Lançado por', width: 22 },

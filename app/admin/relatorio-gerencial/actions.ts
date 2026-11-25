@@ -50,9 +50,9 @@ export async function criarAjuste(dados: {
   const de = dados.de || null;
   const para = dados.para || null;
   if (!anoValido(dados.ano) || !mesValido(dados.mes)) return { erro: 'Mês inválido.' };
-  if (!de && !para) return { erro: 'Escolha de qual rubrica sai e/ou para qual entra.' };
-  if (de === para) return { erro: 'As rubricas de saída e entrada são a mesma.' };
-  if ((de && !NOME_RUBRICA.has(de)) || (para && !NOME_RUBRICA.has(para))) return { erro: 'Rubrica inválida.' };
+  if (!de && !para) return { erro: 'Escolha de qual conta contábil sai e/ou para qual entra.' };
+  if (de === para) return { erro: 'As contas de saída e entrada são a mesma.' };
+  if ((de && !NOME_RUBRICA.has(de)) || (para && !NOME_RUBRICA.has(para))) return { erro: 'Conta contábil inválida.' };
   const valor = Math.round(Number(dados.valor) * 100) / 100;
   if (!Number.isFinite(valor) || valor === 0) return { erro: 'Informe o valor.' };
   if (!dados.descricao.trim()) return { erro: 'Escreva o motivo do ajuste.' };
@@ -80,7 +80,7 @@ export async function definirRubrica(conta: string, rubrica: string): Promise<Re
   const { error } = rubrica
     ? NOME_RUBRICA.has(rubrica)
       ? await db.from('gerencial_depara').upsert({ conta, rubrica, alterado_por: representante.nome, alterado_em: new Date().toISOString() })
-      : { error: { message: 'Rubrica inválida.' } }
+      : { error: { message: 'Conta contábil inválida.' } }
     : await db.from('gerencial_depara').delete().eq('conta', conta);
   if (error) return { erro: erroTabela(error.message) };
   revalidar();
@@ -113,7 +113,7 @@ export async function definirRubricaLancamento(p: {
           alterado_por: representante.nome,
           alterado_em: new Date().toISOString(),
         })
-      : { error: { message: 'Rubrica inválida.' } }
+      : { error: { message: 'Conta contábil inválida.' } }
     : await db.from('gerencial_lancamentos').delete().match(chave);
   if (error) return { erro: /gerencial_lancamentos/.test(error.message) ? 'Falta rodar o supabase/gerencial_lancamentos.sql no Supabase.' : error.message };
   revalidar();
@@ -123,7 +123,7 @@ export async function definirRubricaLancamento(p: {
 /** Parâmetro (% sobre o faturamento) de uma rubrica; null volta ao padrão. */
 export async function salvarParametro(rubrica: string, percentual: number | null): Promise<Resultado> {
   const { representante } = await requireRelatorioGerencial();
-  if (!NOME_RUBRICA.has(rubrica)) return { erro: 'Rubrica inválida.' };
+  if (!NOME_RUBRICA.has(rubrica)) return { erro: 'Conta contábil inválida.' };
   const db = createServiceRoleClient();
   const { error } =
     percentual === null

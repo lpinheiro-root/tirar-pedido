@@ -566,6 +566,23 @@ export function ImportarBordero() {
   const [erro, setErro] = useState<string | null>(null);
   const [resultados, setResultados] = useState<ResultadoBordero[]>([]);
   const [escolha, setEscolha] = useState<Record<string, { fidc: string; empresa: string }>>({});
+  const [planilhas, setPlanilhas] = useState<{ arquivo: string; ok: boolean; texto: string; avisos: string[] }[]>([]);
+
+  /** Planilha de operações do dia (.xlsx): para FIDC sem borderô (ex.: Guanabara), entra como a "planilha do dia". */
+  async function mandarPlanilha(f: File) {
+    const fd = new FormData();
+    fd.set('planilha', f);
+    try {
+      const r = await fetch('/api/fidc/importar', { method: 'POST', body: fd });
+      const json = await r.json().catch(() => ({ erro: 'Resposta inválida do servidor (confira se você tem acesso à aba FIDC).' }));
+      if (!r.ok || json.erro) return { arquivo: f.name, ok: false, texto: json.erro ?? 'Não consegui importar.', avisos: [] };
+      const res = json as RespostaImportacao;
+      const periodo = res.primeira === res.ultima ? br(res.primeira) : `${br(res.primeira)} a ${br(res.ultima)}`;
+      return { arquivo: f.name, ok: true, texto: `Planilha importada: ${res.operacoes} operações (${periodo}).`, avisos: res.avisos };
+    } catch {
+      return { arquivo: f.name, ok: false, texto: 'Falha de conexão com o servidor.', avisos: [] };
+    }
+  }
 
   async function mandar(files: File[], extra?: { fidc: string; empresa: string }) {
     const fd = new FormData();
@@ -580,14 +597,20 @@ export function ImportarBordero() {
 
   async function enviar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const files = Array.from(input.current?.files ?? []);
-    if (!files.length) return;
+    const todos = Array.from(input.current?.files ?? []);
+    if (!todos.length) return;
+    const files = todos.filter((f) => !/\.xlsx$/i.test(f.name));
+    const excel = todos.filter((f) => /\.xlsx$/i.test(f.name));
     setEnviando(true);
     setErro(null);
     setResultados([]);
+    setPlanilhas([]);
     setArquivos(new Map(files.map((f) => [f.name, f])));
     try {
-      setResultados(await mandar(files));
+      const lidas = [];
+      for (const f of excel) lidas.push(await mandarPlanilha(f));
+      setPlanilhas(lidas);
+      if (files.length) setResultados(await mandar(files));
       if (input.current) input.current.value = '';
       router.refresh();
     } catch (err) {
@@ -617,18 +640,47 @@ export function ImportarBordero() {
       <form onSubmit={enviar} className="space-y-3">
         <div>
           <label className="mb-1 block text-label text-on-surface-variant">
-            PDF do borderô baixado no Meus Recebíveis (&quot;Borderô Comprimido Analítico&quot;). Pode escolher vários de uma vez. Importar o mesmo
-            borderô de novo só atualiza, não duplica.
+            PDF do borderô baixado no Meus Recebíveis (&quot;Borderô Comprimido Analítico&quot;) ou a planilha da operação em Excel (.xlsx), para
+            FIDC que não tem borderô, como a Guanabara. Pode escolher vários de uma vez. Importar o mesmo arquivo de novo só atualiza, não duplica.
           </label>
-          <input ref={input} type="file" name="arquivos" accept=".pdf,application/pdf" multiple required className={campoArquivo} />
+          <input
+            ref={input}
+            type="file"
+            name="arquivos"
+            accept=".pdf,application/pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            multiple
+            required
+            className={campoArquivo}
+          />
         </div>
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={enviando}>
-            {enviando ? 'Lendo borderô…' : 'Importar borderô'}
+            {enviando ? 'Importando…' : 'Importar borderô / planilha'}
           </Button>
           {erro && <p className="text-body-sm text-error">{erro}</p>}
         </div>
       </form>
+
+      {planilhas.length > 0 && (
+        <ul className="space-y-2">
+          {planilhas.map((p) => (
+            <li
+              key={p.arquivo}
+              className={`rounded-md border p-3 text-body-sm ${p.ok ? 'border-green-200 bg-green-50 text-green-900' : 'border-red-200 bg-red-50 text-red-900'}`}
+            >
+              <p className="text-label opacity-70">{p.arquivo}</p>
+              <p>{p.ok ? '✅ ' : '❌ '}{p.texto}</p>
+              {p.avisos.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-amber-900">
+                  {p.avisos.map((a) => (
+                    <li key={a}>⚠️ {a}</li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {resultados.length > 0 && (
         <ul className="space-y-2">
@@ -882,7 +934,7 @@ function Importar({ ultima }: { ultima: Importacao | null }) {
             size="sm"
             onClick={() => setAberto(aberto === 'bordero' ? null : 'bordero')}
           >
-            {aberto === 'bordero' ? 'Fechar' : 'Importar borderô (PDF)'}
+            {aberto === 'bordero' ? 'Fechar' : 'Importar borderô (PDF ou Excel)'}
           </Button>
           <Button
             type="button"
