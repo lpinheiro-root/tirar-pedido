@@ -188,7 +188,11 @@ export async function GET(request: Request) {
     .sort((a, b) => a.nome.localeCompare(b.nome));
 
   const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(/\//g, '.');
-  const alvo = (f.regiao || (escolhidos.length ? 'SELECIONADOS' : 'GERAL')).toUpperCase();
+  // "Centro-Oeste" → "CENTRO OESTE", como na capa da cobrança
+  const alvo = semAcento(f.regiao || (escolhidos.length ? 'SELECIONADOS' : 'GERAL'))
+    .replace(/-/g, ' ')
+    .toUpperCase();
+  const tituloCapa = `TOTAL DE INADIMPLÊNCIA ${alvo} ATÉ ${hoje.replace(/\./g, '/')}`;
   const baixar = (buf: ArrayBuffer | Buffer | Uint8Array, nome: string, tipo: string) =>
     new Response(buf as ArrayBuffer, {
       headers: {
@@ -213,7 +217,7 @@ export async function GET(request: Request) {
       zip.file(`${arq}.xlsx`, (await wb.xlsx.writeBuffer()) as ArrayBuffer);
     }
     const total = new ExcelJS.Workbook();
-    abaFinal(total, `TOTAL DE INADIMPLÊNCIA ${alvo}`, grupos);
+    abaFinal(total, tituloCapa, grupos);
     zip.file(`INAD TOTAL ${semAcento(alvo)}.xlsx`, (await total.xlsx.writeBuffer()) as ArrayBuffer);
     const buf = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
     return baixar(buf, `INAD ${alvo} ${hoje}.zip`, 'application/zip');
@@ -226,7 +230,7 @@ export async function GET(request: Request) {
     abaVendedor(wb, grupos[0].nome, grupos[0].ts, usadas);
     nomeArquivo = `INAD ${grupos[0].nome}`;
   } else {
-    abaFinal(wb, `TOTAL DE INADIMPLÊNCIA ${alvo}`, grupos);
+    abaFinal(wb, tituloCapa, grupos);
     grupos.forEach((g) => abaVendedor(wb, g.nome, g.ts, usadas));
     nomeArquivo = `INAD TOTAL ${alvo}`;
   }

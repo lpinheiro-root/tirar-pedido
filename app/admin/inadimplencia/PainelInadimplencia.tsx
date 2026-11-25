@@ -28,9 +28,92 @@ const seletor = 'h-9 rounded-md border border-[#D1D5DB] bg-surface-container-low
 
 // atraso: uma cor só (vermelho), mais escura quanto mais velho — com o rótulo sempre ao lado
 const COR_FAIXA = ['#fca5a5', '#f87171', '#ef4444', '#dc2626', '#b91c1c', '#7f1d1d'];
-const COR_TIPO: Record<string, string> = { fidc: '#2563eb', banco: '#0284c7', carteira: '#475569', outra: '#94a3b8' };
+const COR_TIPO: Record<string, string> = {
+  fidc: '#2563eb',
+  banco: '#0284c7',
+  carteira: '#475569',
+  outra: '#94a3b8',
+};
 
 const soma = (ts: TituloVencido[]) => ts.reduce((s, t) => s + t.saldo, 0);
+
+/** Capa da região (aba FINAL / "INAD TOTAL <REGIÃO>"): total por representante + carteira, recompra e FIDC. */
+function CapaRegiao({ regiao, ts }: { regiao: string; ts: TituloVencido[] }) {
+  const repr = (v: string) => v.replace(/\(.*$/, '').replace(/\s+/g, ' ').trim().toUpperCase() || v.toUpperCase();
+  const m = new Map<string, TituloVencido[]>();
+  ts.forEach((t) => m.set(t.vendedorCod || 'SEM', [...(m.get(t.vendedorCod || 'SEM') ?? []), t]));
+  const grupos = Array.from(m.entries())
+    .map(([cod, l]) => ({
+      cod,
+      nome: repr(l[0].vendedor),
+      total: soma(l),
+      qtd: l.length,
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  const carteira = soma(ts.filter((t) => t.descricao === 'CARTEIRA'));
+  const recompra = soma(ts.filter((t) => t.descricao === 'RECOMPRA'));
+  const fidc = soma(ts.filter((t) => t.descricao !== 'CARTEIRA' && t.descricao !== 'RECOMPRA'));
+  const hoje = new Date().toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+  });
+  const td = 'border border-border-muted px-3 py-1.5';
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <div className="min-w-[320px] flex-1 overflow-hidden rounded-md border border-border-muted bg-surface-container-lowest">
+        <table className="w-full text-body-sm">
+          <thead>
+            <tr>
+              <th colSpan={2} className={`${td} bg-[#C0C0C0] text-left text-body font-bold text-[#111]`}>
+                TOTAL DE INADIMPLÊNCIA {semAcentoUp(regiao)} ATÉ {hoje}
+              </th>
+            </tr>
+            <tr className="bg-[#C0C0C0] text-[#111]">
+              <th className={`${td} text-center text-label font-semibold`}>REPRESENTANTE</th>
+              <th className={`${td} w-44 text-center text-label font-semibold`}>VALOR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grupos.map((g) => (
+              <tr key={g.cod} className="hover:bg-primary/5">
+                <td className={td}>
+                  {g.nome}
+                  <span className="ml-2 text-label text-on-surface-variant">
+                    {g.cod === 'SEM' ? '' : `${g.cod} · `}
+                    {g.qtd} título{g.qtd === 1 ? '' : 's'}
+                  </span>
+                </td>
+                <td className={`${td} text-right tabular-nums`}>{moeda(g.total)}</td>
+              </tr>
+            ))}
+            <tr className="font-bold">
+              <td className={`${td} text-right`}>TOTAL</td>
+              <td className={`${td} bg-[#C0C0C0] text-right tabular-nums text-[#111]`}>{moeda(soma(ts))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="w-full max-w-xs overflow-hidden rounded-md border border-border-muted bg-surface-container-lowest sm:w-auto">
+        <table className="w-full text-body-sm">
+          <tbody>
+            {(
+              [
+                ['TOTAL CARTEIRA:', carteira],
+                ['TOTAL RECOMPRA:', recompra],
+                ['TOTAL FIDC:', fidc],
+              ] as const
+            ).map(([rot, v]) => (
+              <tr key={rot}>
+                <td className={`${td} font-semibold`}>{rot}</td>
+                <td className={`${td} text-right tabular-nums`}>{moeda(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+const semAcentoUp = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/-/g, ' ').toUpperCase();
 
 /** A planilha "INAD <VENDEDOR>" da cobrança, na tela: mesmas colunas, ordem e total do Excel. */
 function PlanilhaVendedor({ nome, ts }: { nome: string; ts: TituloVencido[] }) {
@@ -101,7 +184,13 @@ function Barras({
   ativo,
   onClicar,
 }: {
-  itens: { id: string; rotulo: string; valor: number; qtd: number; cor: string }[];
+  itens: {
+    id: string;
+    rotulo: string;
+    valor: number;
+    qtd: number;
+    cor: string;
+  }[];
   ativo?: string;
   onClicar?: (id: string) => void;
 }) {
@@ -121,7 +210,13 @@ function Barras({
         >
           <span className="truncate text-on-surface">{i.rotulo}</span>
           <span className="h-3 w-full rounded-sm bg-surface-container">
-            <span className="block h-3 rounded-sm" style={{ width: `${i.valor ? Math.max(1, (i.valor / max) * 100) : 0}%`, background: i.cor }} />
+            <span
+              className="block h-3 rounded-sm"
+              style={{
+                width: `${i.valor ? Math.max(1, (i.valor / max) * 100) : 0}%`,
+                background: i.cor,
+              }}
+            />
           </span>
           <span className="text-right tabular-nums text-on-surface">
             {curto(i.valor)} <span className="text-label text-on-surface-variant">· {total ? pct(i.valor / total) : '—'}</span>
@@ -179,7 +274,9 @@ function Colunas({ itens, cor, rotuloX }: { itens: { k: string; valor: number; q
       {atual && (
         <div
           className="pointer-events-none absolute top-0 z-10 rounded-md border border-border-muted bg-surface-container-lowest px-3 py-2 text-label shadow-md"
-          style={{ left: `${Math.min(72, (itens.indexOf(atual) / Math.max(1, itens.length)) * 100)}%` }}
+          style={{
+            left: `${Math.min(72, (itens.indexOf(atual) / Math.max(1, itens.length)) * 100)}%`,
+          }}
         >
           <p className="font-semibold text-on-surface">{rotuloX(atual.k)}</p>
           <p>{moeda(atual.valor)}</p>
@@ -231,11 +328,23 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
   // sem o filtro da própria dimensão, para o gráfico mostrar todas as opções
   const porFaixa = FAIXAS.map((x, i) => {
     const ts = filtrar(titulos, { ...f, faixa: '' }).filter((t) => faixaDe(t.dias) === x.id);
-    return { id: x.id, rotulo: x.rotulo, valor: soma(ts), qtd: ts.length, cor: COR_FAIXA[i] };
+    return {
+      id: x.id,
+      rotulo: x.rotulo,
+      valor: soma(ts),
+      qtd: ts.length,
+      cor: COR_FAIXA[i],
+    };
   });
   const porTipo = TIPOS_CARTEIRA.map((x) => {
     const ts = filtrar(titulos, { ...f, tipo: '' }).filter((t) => t.tipoCarteira === x.id);
-    return { id: x.id, rotulo: x.rotulo, valor: soma(ts), qtd: ts.length, cor: COR_TIPO[x.id] };
+    return {
+      id: x.id,
+      rotulo: x.rotulo,
+      valor: soma(ts),
+      qtd: ts.length,
+      cor: COR_TIPO[x.id],
+    };
   }).filter((x) => x.qtd);
 
   // por mês de vencimento (últimos 24 meses; o resto junta em "antes")
@@ -250,7 +359,13 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     }
     const ks = Array.from(m.keys()).sort();
     const ultimos = ks.slice(-24);
-    const antes = ks.slice(0, -24).reduce((s, k) => ({ valor: s.valor + m.get(k)!.valor, qtd: s.qtd + m.get(k)!.qtd }), { valor: 0, qtd: 0 });
+    const antes = ks.slice(0, -24).reduce(
+      (s, k) => ({
+        valor: s.valor + m.get(k)!.valor,
+        qtd: s.qtd + m.get(k)!.qtd,
+      }),
+      { valor: 0, qtd: 0 },
+    );
     return [...(antes.qtd ? [{ k: 'antes', ...antes }] : []), ...ultimos.map((k) => ({ k, ...m.get(k)! }))];
   }, [lista]);
 
@@ -279,7 +394,12 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
       m.set(t.empresaId, s);
     }
     return Array.from(m.entries())
-      .map(([id, s]) => ({ id, empresa: s.empresa, ts: s.ts, total: soma(s.ts) }))
+      .map(([id, s]) => ({
+        id,
+        empresa: s.empresa,
+        ts: s.ts,
+        total: soma(s.ts),
+      }))
       .sort((a, b) => b.total - a.total);
   }, [lista]);
 
@@ -287,12 +407,22 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     const m = new Map<string, { cliente: string; cnpj: string; empresa: string; ts: TituloVencido[] }>();
     for (const t of lista) {
       const k = `${t.empresaId}|${t.clienteCod}`;
-      const s = m.get(k) ?? { cliente: t.cliente, cnpj: t.cnpj, empresa: t.empresa, ts: [] };
+      const s = m.get(k) ?? {
+        cliente: t.cliente,
+        cnpj: t.cnpj,
+        empresa: t.empresa,
+        ts: [],
+      };
       s.ts.push(t);
       m.set(k, s);
     }
     return Array.from(m.entries())
-      .map(([k, s]) => ({ k, ...s, total: soma(s.ts), maior: Math.max(...s.ts.map((t) => t.dias)) }))
+      .map(([k, s]) => ({
+        k,
+        ...s,
+        total: soma(s.ts),
+        maior: Math.max(...s.ts.map((t) => t.dias)),
+      }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 30);
   }, [lista]);
@@ -341,6 +471,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     return Array.from(m.entries())
       .map(([regiao, ts]) => ({
         regiao,
+        ts,
         vendedores: new Set(ts.map((t) => t.vendedorCod)).size,
         qtd: ts.length,
         carteira: soma(ts.filter((t) => t.descricao === 'CARTEIRA')),
@@ -376,6 +507,24 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
     return `/api/inadimplencia/cobranca?${q.toString()}`;
   };
   const [vendAberto, setVendAberto] = useState<string | null>(null);
+  const [regiaoAberta, setRegiaoAberta] = useState<string | null>(null);
+  const seta = (aberto: boolean, rotulo: string, alternar: () => void) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        alternar();
+      }}
+      aria-expanded={aberto}
+      aria-label={`${aberto ? 'Fechar' : 'Abrir'} ${rotulo}`}
+      title={aberto ? 'Fechar' : `Ver ${rotulo} na tela`}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-primary/10"
+    >
+      <svg viewBox="0 0 20 20" className={`h-4 w-4 transition-transform ${aberto ? 'rotate-90' : ''}`} fill="currentColor" aria-hidden>
+        <path d="M7 4l7 6-7 6V4z" />
+      </svg>
+    </button>
+  );
   const selecionados = porVendedor.filter((v) => marcadosVend.has(v.cod));
   const totalSelecionado = selecionados.reduce((s, v) => s + v.total, 0);
   const botaoBaixar = (href: string, rotulo = 'Baixar planilha') => (
@@ -453,7 +602,16 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
           </label>
           <label className="flex flex-col text-label text-on-surface-variant">
             FIDC
-            <select value={f.fidc ?? ''} onChange={(e) => muda({ fidc: e.target.value, tipo: e.target.value ? 'fidc' : f.tipo })} className={seletor}>
+            <select
+              value={f.fidc ?? ''}
+              onChange={(e) =>
+                muda({
+                  fidc: e.target.value,
+                  tipo: e.target.value ? 'fidc' : f.tipo,
+                })
+              }
+              className={seletor}
+            >
               <option value="">Todas</option>
               {opcoes.fidcs.map((x) => (
                 <option key={x}>{x}</option>
@@ -512,7 +670,15 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
             <button
               type="button"
               onClick={() => {
-                muda({ empresa: '', tipo: '', fidc: '', faixa: '', vendedor: '', regiao: '', busca: '' });
+                muda({
+                  empresa: '',
+                  tipo: '',
+                  fidc: '',
+                  faixa: '',
+                  vendedor: '',
+                  regiao: '',
+                  busca: '',
+                });
                 setTextoVendedor('');
               }}
               className="h-9 px-2 text-body-sm text-primary"
@@ -560,20 +726,44 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
         </Card>
         <Card className="p-4">
           <h2 className="mb-2 text-h2 text-on-surface">Onde está o título</h2>
-          <Barras itens={porTipo} ativo={f.tipo} onClicar={(id) => muda({ tipo: f.tipo === id ? '' : (id as Filtros['tipo']), fidc: '' })} />
+          <Barras
+            itens={porTipo}
+            ativo={f.tipo}
+            onClicar={(id) =>
+              muda({
+                tipo: f.tipo === id ? '' : (id as Filtros['tipo']),
+                fidc: '',
+              })
+            }
+          />
           {opcoes.fidcs.length > 0 && (
             <div className="mt-3 border-t border-border-muted pt-3">
               <p className="mb-1 text-label uppercase text-on-surface-variant">Vencido em cada FIDC</p>
               <Barras
                 itens={opcoes.fidcs
                   .map((x) => {
-                    const ts = filtrar(titulos, { ...f, fidc: x, tipo: 'fidc' });
-                    return { id: x, rotulo: x, valor: soma(ts), qtd: ts.length, cor: COR_TIPO.fidc };
+                    const ts = filtrar(titulos, {
+                      ...f,
+                      fidc: x,
+                      tipo: 'fidc',
+                    });
+                    return {
+                      id: x,
+                      rotulo: x,
+                      valor: soma(ts),
+                      qtd: ts.length,
+                      cor: COR_TIPO.fidc,
+                    };
                   })
                   .filter((x) => x.qtd)
                   .sort((a, b) => b.valor - a.valor)}
                 ativo={f.fidc}
-                onClicar={(id) => muda({ fidc: f.fidc === id ? '' : id, tipo: f.fidc === id ? f.tipo : 'fidc' })}
+                onClicar={(id) =>
+                  muda({
+                    fidc: f.fidc === id ? '' : id,
+                    tipo: f.fidc === id ? f.tipo : 'fidc',
+                  })
+                }
               />
             </div>
           )}
@@ -606,6 +796,7 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
           <table className="mt-2 w-full text-body-sm">
             <thead>
               <tr className="text-label uppercase text-on-surface-variant">
+                <th className="w-8 py-2 pl-3" />
                 <th className="px-4 py-2 text-left font-medium">Região</th>
                 <th className="px-4 py-2 text-right font-medium">Vendedores</th>
                 <th className="px-4 py-2 text-right font-medium">Títulos</th>
@@ -618,20 +809,36 @@ export function PainelInadimplencia({ titulos, incluirGrupo, fotos }: { titulos:
             </thead>
             <tbody>
               {porRegiao.map((r) => (
-                <tr
-                  key={r.regiao}
-                  className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.regiao === r.regiao ? 'bg-primary/10' : ''}`}
-                  onClick={() => muda({ regiao: f.regiao === r.regiao ? '' : r.regiao, vendedor: '' })}
-                >
-                  <td className="px-4 py-1.5 font-medium text-on-surface">{r.regiao}</td>
-                  <td className="px-4 py-1.5 text-right tabular-nums">{r.vendedores}</td>
-                  <td className="px-4 py-1.5 text-right tabular-nums">{r.qtd}</td>
-                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.carteira ? moeda(r.carteira) : '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.recompra ? moeda(r.recompra) : '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.fidc ? moeda(r.fidc) : '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(r.total)}</td>
-                  <td className="px-4 py-1.5 text-right">{botaoBaixar(linkCobranca({ regiao: r.regiao, vendedor: '' }), 'Baixar planilha da região')}</td>
-                </tr>
+                <Fragment key={r.regiao}>
+                  <tr
+                    className={`cursor-pointer border-t border-border-muted hover:bg-primary/5 ${f.regiao === r.regiao ? 'bg-primary/10' : regiaoAberta === r.regiao ? 'bg-primary/5' : ''}`}
+                    onClick={() =>
+                      muda({
+                        regiao: f.regiao === r.regiao ? '' : r.regiao,
+                        vendedor: '',
+                      })
+                    }
+                  >
+                    <td className="py-1.5 pl-3">
+                      {seta(regiaoAberta === r.regiao, `a capa de ${r.regiao}`, () => setRegiaoAberta(regiaoAberta === r.regiao ? null : r.regiao))}
+                    </td>
+                    <td className="px-4 py-1.5 font-medium text-on-surface">{r.regiao}</td>
+                    <td className="px-4 py-1.5 text-right tabular-nums">{r.vendedores}</td>
+                    <td className="px-4 py-1.5 text-right tabular-nums">{r.qtd}</td>
+                    <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.carteira ? moeda(r.carteira) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.recompra ? moeda(r.recompra) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">{r.fidc ? moeda(r.fidc) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-1.5 text-right font-semibold tabular-nums">{moeda(r.total)}</td>
+                    <td className="px-4 py-1.5 text-right">{botaoBaixar(linkCobranca({ regiao: r.regiao, vendedor: '' }), 'Baixar planilha da região')}</td>
+                  </tr>
+                  {regiaoAberta === r.regiao && (
+                    <tr className="bg-surface-container-low/60">
+                      <td colSpan={9} className="p-3">
+                        <CapaRegiao regiao={r.regiao} ts={r.ts} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
