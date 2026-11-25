@@ -178,6 +178,16 @@ export interface Ajuste {
   criado_em: string;
 }
 
+/** Rubrica escolhida para um pagamento específico (vale por cima da rubrica da conta). */
+export interface LancamentoRubrica {
+  fin_mov_id: number;
+  conta: string;
+  ano: number;
+  mes: number;
+  valor: number;
+  rubrica: string;
+}
+
 /** Soma do ORGM por conta e mês (valor pago no mês). */
 export interface ContaMes {
   conta: string; // ctbContaID ou pseudo-conta

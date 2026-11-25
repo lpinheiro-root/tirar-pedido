@@ -87,6 +87,39 @@ export async function definirRubrica(conta: string, rubrica: string): Promise<Re
   return {};
 }
 
+/** Rubrica de um pagamento específico (vazio = volta para a rubrica da conta). */
+export async function definirRubricaLancamento(p: {
+  finMovId: number;
+  conta: string;
+  ano: number;
+  mes: number;
+  valor: number;
+  favorecido: string;
+  rubrica: string;
+}): Promise<Resultado> {
+  const { representante } = await requireRelatorioGerencial();
+  if (!Number.isInteger(p.finMovId) || !p.conta || p.conta.length > 40 || !anoValido(p.ano) || !mesValido(p.mes)) return { erro: 'Pagamento inválido.' };
+  const db = createServiceRoleClient();
+  const chave = { fin_mov_id: p.finMovId, conta: p.conta };
+  const { error } = p.rubrica
+    ? NOME_RUBRICA.has(p.rubrica)
+      ? await db.from('gerencial_lancamentos').upsert({
+          ...chave,
+          ano: p.ano,
+          mes: p.mes,
+          valor: Math.round(Number(p.valor) * 100) / 100,
+          favorecido: String(p.favorecido ?? '').slice(0, 200),
+          rubrica: p.rubrica,
+          alterado_por: representante.nome,
+          alterado_em: new Date().toISOString(),
+        })
+      : { error: { message: 'Rubrica inválida.' } }
+    : await db.from('gerencial_lancamentos').delete().match(chave);
+  if (error) return { erro: /gerencial_lancamentos/.test(error.message) ? 'Falta rodar o supabase/gerencial_lancamentos.sql no Supabase.' : error.message };
+  revalidar();
+  return {};
+}
+
 /** Parâmetro (% sobre o faturamento) de uma rubrica; null volta ao padrão. */
 export async function salvarParametro(rubrica: string, percentual: number | null): Promise<Resultado> {
   const { representante } = await requireRelatorioGerencial();

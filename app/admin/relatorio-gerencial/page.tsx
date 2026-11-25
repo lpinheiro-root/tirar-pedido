@@ -25,7 +25,7 @@ export default async function RelatorioGerencialPage({ searchParams }: { searchP
       ? 'Sem conexão com o ORGM agora. Atualize a página em instantes.'
       : m;
   }
-  const { mensal, ajustes, depara, parametros, falta } = await carregarManuais(ano);
+  const { mensal, ajustes, depara, parametros, lancamentos, falta } = await carregarManuais(ano);
 
   return (
     <div>
@@ -46,6 +46,7 @@ export default async function RelatorioGerencialPage({ searchParams }: { searchP
           ajustes={ajustes}
           depara={depara}
           parametros={parametros}
+          lancamentos={lancamentos}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 /**
  * Relatório Gerencial: a conta da tela e do Excel (mesmo resultado nos dois). Sem acesso a banco.
  */
-import { DEPARA_PADRAO, MESES, RUBRICAS, type Ajuste, type ContaMes, type Mensal } from './rubricas';
+import { DEPARA_PADRAO, MESES, RUBRICAS, type Ajuste, type ContaMes, type LancamentoRubrica, type Mensal } from './rubricas';
 
 export const zeros = () => Array<number>(12).fill(0);
 export const soma = (a: number[]) => a.reduce((s, v) => s + v, 0);
@@ -13,6 +13,7 @@ export interface ContaLinha {
   v: number[];
   padrao: string; // rubrica do de-para padrão ('' = nenhuma)
   trocada: boolean; // o controle mudou a rubrica
+  porLancamento?: boolean; // linha formada por pagamentos escolhidos um a um
 }
 
 export type CampoMensal = keyof Omit<Mensal, 'ano' | 'mes'>;
@@ -24,9 +25,10 @@ export interface DadosGerencial {
   mensal: Mensal[];
   parametros: Record<string, number>;
   ultimoMesFechado: number;
+  lancamentos?: LancamentoRubrica[];
 }
 
-export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMesFechado }: DadosGerencial) {
+export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMesFechado, lancamentos = [] }: DadosGerencial) {
   const rubDe = (conta: string) => depara[conta] ?? DEPARA_PADRAO[conta] ?? '';
   const contasPorRub = new Map<string, Map<string, ContaLinha>>();
   const porRub = new Map<string, number[]>();
@@ -42,6 +44,23 @@ export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMe
     m.set(c.conta, l);
     if (!porRub.has(rub)) porRub.set(rub, zeros());
     porRub.get(rub)![c.mes - 1] += c.valor;
+  }
+  // pagamentos com rubrica escolhida um a um: saem da rubrica da conta e entram na escolhida
+  for (const o of lancamentos) {
+    const orig = rubDe(o.conta);
+    const src = contasPorRub.get(orig)?.get(o.conta);
+    if (!src || orig === o.rubrica || o.mes < 1 || o.mes > 12) continue;
+    const i = o.mes - 1;
+    src.v[i] -= o.valor;
+    porRub.get(orig)![i] -= o.valor;
+    if (!contasPorRub.has(o.rubrica)) contasPorRub.set(o.rubrica, new Map());
+    const m = contasPorRub.get(o.rubrica)!;
+    const dest =
+      m.get(o.conta) ?? ({ conta: o.conta, nome: src.nome, grupo: src.grupo, v: zeros(), padrao: src.padrao, trocada: true, porLancamento: true } as ContaLinha);
+    dest.v[i] += o.valor;
+    m.set(o.conta, dest);
+    if (!porRub.has(o.rubrica)) porRub.set(o.rubrica, zeros());
+    porRub.get(o.rubrica)![i] += o.valor;
   }
   for (const a of ajustes) {
     for (const [rub, sinal] of [
@@ -86,7 +105,9 @@ export function calcular({ contas, ajustes, depara, mensal, parametros, ultimoMe
     return ms.length ? ms.reduce((s, i) => s + v[i], 0) / ms.length : 0;
   };
 
-  const semRubrica = Array.from(contasPorRub.get('')?.values() ?? []).sort((a, b) => soma(b.v) - soma(a.v));
+  const semRubrica = Array.from(contasPorRub.get('')?.values() ?? [])
+    .filter((c) => c.v.some((x) => Math.abs(x) > 0.005))
+    .sort((a, b) => soma(b.v) - soma(a.v));
   const param = (cod: string) => parametros[cod] ?? RUBRICAS.find((r) => r.cod === cod)?.parametro ?? 0;
   const ultimoComDado = Math.max(...MESES.map((_, i) => (Math.abs(total[i]) > 0.5 || fat[i] ? i : -1)));
   const colunas = MESES.map((_, i) => i).filter((i) => i <= Math.max(ultimoComDado, 0));

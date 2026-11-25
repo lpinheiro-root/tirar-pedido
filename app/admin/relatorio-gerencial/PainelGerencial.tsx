@@ -4,16 +4,18 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import {
+  DEPARA_PADRAO,
   MESES,
   NOME_RUBRICA,
   RUBRICAS,
   type Ajuste,
+  type LancamentoRubrica,
   type ContaMes,
   type Mensal,
   type Pagamento,
 } from '@/lib/gerencial/rubricas';
 import { calcular, soma, zeros, type CampoMensal } from '@/lib/gerencial/calculo';
-import { criarAjuste, definirRubrica, detalheConta, excluirAjuste, salvarMensal, salvarParametro } from './actions';
+import { criarAjuste, definirRubrica, definirRubricaLancamento, detalheConta, excluirAjuste, salvarMensal, salvarParametro } from './actions';
 
 const n0 = (v: number) => (Math.abs(v) < 0.5 ? '–' : v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }));
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -37,6 +39,7 @@ export function PainelGerencial({
   ajustes,
   depara,
   parametros,
+  lancamentos,
 }: {
   ano: number;
   anoAtual: number;
@@ -46,6 +49,7 @@ export function PainelGerencial({
   ajustes: Ajuste[];
   depara: Record<string, string>;
   parametros: Record<string, number>;
+  lancamentos: LancamentoRubrica[];
 }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [semAberta, setSemAberta] = useState<string | null>(null);
@@ -62,9 +66,27 @@ export function PainelGerencial({
       if (r.erro) setErro(r.erro);
     });
 
+  const escolha: EscolhaLancamento = {
+    escolhas: Object.fromEntries(lancamentos.map((l) => [`${l.fin_mov_id}|${l.conta}`, l.rubrica])),
+    rubricaConta: (conta) => depara[conta] ?? DEPARA_PADRAO[conta] ?? '',
+    onEscolher: (p, rubrica) =>
+      executar(() =>
+        definirRubricaLancamento({
+          finMovId: p.finMovId,
+          conta: p.conta,
+          ano,
+          mes: Number(p.data.slice(5, 7)),
+          valor: p.valor,
+          favorecido: p.favorecido,
+          rubrica,
+        })
+      ),
+    desabilitado: pendente,
+  };
+
   const calc = useMemo(
-    () => calcular({ contas, ajustes, depara, mensal, parametros, ultimoMesFechado }),
-    [contas, ajustes, depara, mensal, parametros, ultimoMesFechado]
+    () => calcular({ contas, ajustes, depara, mensal, parametros, ultimoMesFechado, lancamentos }),
+    [contas, ajustes, depara, mensal, parametros, ultimoMesFechado, lancamentos]
   );
 
   const { porRub, total, fat, receb, fechados, nMeses, somaMeses, mediaReceb, semRubrica, param, colunas, pctFat, mesesFat } = calc;
@@ -124,9 +146,9 @@ export function PainelGerencial({
       {semRubrica.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/80 p-4">
           <p className="text-body font-bold text-amber-900">
-            Contas pagas que ainda não têm rubrica. Elas entram no total de despesas, mas não em nenhuma linha: escolha a rubrica de cada uma.
+            Pagamentos que ainda não têm rubrica. Eles entram no total de despesas, mas não em nenhuma linha.
           </p>
-          <p className="mt-1 text-body-sm text-amber-900">Clique na setinha para ver todos os pagamentos da conta no ano e decidir onde ela entra.</p>
+          <p className="mt-1 text-body-sm text-amber-900">Clique na setinha para abrir os pagamentos e escolher a rubrica de cada um, na última coluna.</p>
           <div className="mt-3 space-y-1">
             {semRubrica.map((c) => (
               <div key={c.conta}>
@@ -144,11 +166,10 @@ export function PainelGerencial({
                     </span>
                   </button>
                   <span className="w-32 text-right font-bold">{brl(soma(c.v))}</span>
-                  <SeletorRubrica valor="" onTrocar={(r) => executar(() => definirRubrica(c.conta, r))} desabilitado={pendente} />
                 </div>
                 {semAberta === c.conta && (
                   <div className="my-2 ml-6 rounded-xl border border-amber-200 bg-white p-3">
-                    <ListaPagamentos ano={ano} mes={0} conta={c.conta} alturaMax="420px" />
+                    <ListaPagamentos ano={ano} mes={0} conta={c.conta} alturaMax="420px" {...escolha} />
                   </div>
                 )}
               </div>
@@ -253,13 +274,19 @@ export function PainelGerencial({
                               </span>
                               <span className="flex items-center gap-2 text-[11px]">
                                 {c.conta}
-                                {c.trocada && <span className="rounded bg-amber-100 px-1 text-amber-800">rubrica trocada</span>}
-                                <SeletorRubrica
-                                  pequeno
-                                  valor={r.cod}
-                                  onTrocar={(nova) => executar(() => definirRubrica(c.conta, nova === c.padrao ? '' : nova))}
-                                  desabilitado={pendente}
-                                />
+                                {c.porLancamento ? (
+                                  <span className="rounded bg-blue-100 px-1 text-primary">escolhido por pagamento (clique no valor para ver)</span>
+                                ) : (
+                                  <>
+                                    {c.trocada && <span className="rounded bg-amber-100 px-1 text-amber-800">rubrica trocada</span>}
+                                    <SeletorRubrica
+                                      pequeno
+                                      valor={r.cod}
+                                      onTrocar={(nova) => executar(() => definirRubrica(c.conta, nova === c.padrao ? '' : nova))}
+                                      desabilitado={pendente}
+                                    />
+                                  </>
+                                )}
                               </span>
                             </td>
                             {colunas.map((i) => (
@@ -461,7 +488,7 @@ export function PainelGerencial({
           }
         />
       )}
-      {detalhe && <JanelaDetalhe ano={ano} {...detalhe} fechar={() => setDetalhe(null)} />}
+      {detalhe && <JanelaDetalhe ano={ano} {...detalhe} escolha={escolha} fechar={() => setDetalhe(null)} />}
     </div>
   );
 }
@@ -682,7 +709,24 @@ function JanelaAjuste({
 }
 
 /** Pagamentos de uma conta (num mês, ou no ano todo com mes 0), buscados no ORGM. */
-function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number; mes: number; conta: string; alturaMax?: string }) {
+interface EscolhaLancamento {
+  /** rubrica escolhida por pagamento: chave "finMovId|conta" */
+  escolhas: Record<string, string>;
+  rubricaConta: (conta: string) => string;
+  onEscolher: (p: Pagamento, rubrica: string) => void;
+  desabilitado: boolean;
+}
+
+function ListaPagamentos({
+  ano,
+  mes,
+  conta,
+  alturaMax = '65vh',
+  escolhas,
+  rubricaConta,
+  onEscolher,
+  desabilitado,
+}: { ano: number; mes: number; conta: string; alturaMax?: string } & EscolhaLancamento) {
   const [estado, setEstado] = useState<{ carregando: boolean; erro?: string; linhas?: Pagamento[] }>({ carregando: true });
   useEffect(() => {
     let vivo = true;
@@ -710,6 +754,7 @@ function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number;
             {temPedido && <th>Pedido de compra / item</th>}
             <th>Empresa</th>
             <th className="text-right">Valor</th>
+            <th className="pl-3">Rubrica deste pagamento</th>
           </tr>
         </thead>
         <tbody>
@@ -726,6 +771,21 @@ function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number;
               )}
               <td className="pr-2 text-on-surface-variant">{l.empresa}</td>
               <td className="whitespace-nowrap text-right font-bold">{brl(l.valor)}</td>
+              <td className="pl-3">
+                <select
+                  value={escolhas[`${l.finMovId}|${conta}`] ?? ''}
+                  disabled={desabilitado}
+                  onChange={(e) => onEscolher(l, e.target.value)}
+                  className={`max-w-[220px] rounded-lg border px-1 py-0.5 text-[12px] ${escolhas[`${l.finMovId}|${conta}`] ? 'border-primary bg-blue-50 font-semibold text-primary' : 'border-border-muted bg-white'}`}
+                >
+                  <option value="">{rubricaConta(conta) ? `igual à conta (${rubricaConta(conta)})` : 'Escolher rubrica…'}</option>
+                  {RUBRICAS.map((r) => (
+                    <option key={r.cod} value={r.cod}>
+                      {r.cod} {r.nome}
+                    </option>
+                  ))}
+                </select>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -735,6 +795,7 @@ function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number;
               {linhas.length} pagamento(s)
             </td>
             <td className="text-right">{brl(soma(linhas.map((l) => l.valor)))}</td>
+            <td />
           </tr>
         </tfoot>
       </table>
@@ -742,10 +803,24 @@ function ListaPagamentos({ ano, mes, conta, alturaMax = '65vh' }: { ano: number;
   );
 }
 
-function JanelaDetalhe({ ano, mes, conta, nome, fechar }: { ano: number; mes: number; conta: string; nome: string; fechar: () => void }) {
+function JanelaDetalhe({
+  ano,
+  mes,
+  conta,
+  nome,
+  fechar,
+  escolha,
+}: {
+  ano: number;
+  mes: number;
+  conta: string;
+  nome: string;
+  fechar: () => void;
+  escolha: EscolhaLancamento;
+}) {
   return (
     <Janela titulo={`${nome} — ${MESES[mes - 1]}/${ano}`} fechar={fechar} largo>
-      <ListaPagamentos ano={ano} mes={mes} conta={conta} />
+      <ListaPagamentos ano={ano} mes={mes} conta={conta} {...escolha} />
     </Janela>
   );
 }
