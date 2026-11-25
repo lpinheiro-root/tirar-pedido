@@ -4,7 +4,6 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import {
-  DEPARA_PADRAO,
   MESES,
   NOME_RUBRICA,
   RUBRICAS,
@@ -13,24 +12,13 @@ import {
   type Mensal,
   type Pagamento,
 } from '@/lib/gerencial/rubricas';
+import { calcular, soma, zeros, type CampoMensal } from '@/lib/gerencial/calculo';
 import { criarAjuste, definirRubrica, detalheConta, excluirAjuste, salvarMensal, salvarParametro } from './actions';
 
 const n0 = (v: number) => (Math.abs(v) < 0.5 ? '–' : v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }));
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct = (v: number) => (Number.isFinite(v) ? `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '–');
-const zeros = () => Array<number>(12).fill(0);
-const soma = (a: number[]) => a.reduce((s, v) => s + v, 0);
-
-interface ContaLinha {
-  conta: string;
-  nome: string;
-  grupo: string;
-  v: number[];
-  padrao: string; // rubrica do de-para padrão ('' = nenhuma)
-  trocada: boolean; // o controle mudou a rubrica
-}
-
-const CAMPOS: { id: keyof Omit<Mensal, 'ano' | 'mes'>; rotulo: string }[] = [
+const CAMPOS: { id: CampoMensal; rotulo: string }[] = [
   { id: 'faturamento', rotulo: 'Faturamento (base do % s/ fat.)' },
   { id: 'fat_off', rotulo: 'Natuhair OFF' },
   { id: 'fat_terceiros', rotulo: 'Natuhair terceiros (Zarb)' },
@@ -73,59 +61,12 @@ export function PainelGerencial({
       if (r.erro) setErro(r.erro);
     });
 
-  const calc = useMemo(() => {
-    const rubDe = (conta: string) => depara[conta] ?? DEPARA_PADRAO[conta] ?? '';
-    const contasPorRub = new Map<string, Map<string, ContaLinha>>();
-    const porRub = new Map<string, number[]>();
-    const ajPorRub = new Map<string, number[]>();
-    for (const c of contas) {
-      const rub = rubDe(c.conta);
-      if (!contasPorRub.has(rub)) contasPorRub.set(rub, new Map());
-      const m = contasPorRub.get(rub)!;
-      const l =
-        m.get(c.conta) ??
-        ({ conta: c.conta, nome: c.nome, grupo: c.grupo, v: zeros(), padrao: DEPARA_PADRAO[c.conta] ?? '', trocada: c.conta in depara } as ContaLinha);
-      l.v[c.mes - 1] += c.valor;
-      m.set(c.conta, l);
-      if (!porRub.has(rub)) porRub.set(rub, zeros());
-      porRub.get(rub)![c.mes - 1] += c.valor;
-    }
-    for (const a of ajustes) {
-      for (const [rub, sinal] of [
-        [a.de_rubrica, -1],
-        [a.para_rubrica, 1],
-      ] as const) {
-        if (!rub) continue;
-        if (!porRub.has(rub)) porRub.set(rub, zeros());
-        if (!ajPorRub.has(rub)) ajPorRub.set(rub, zeros());
-        porRub.get(rub)![a.mes - 1] += sinal * a.valor;
-        ajPorRub.get(rub)![a.mes - 1] += sinal * a.valor;
-      }
-    }
-    const total = zeros();
-    for (const v of Array.from(porRub.values())) v.forEach((x, i) => (total[i] += x));
+  const calc = useMemo(
+    () => calcular({ contas, ajustes, depara, mensal, parametros, ultimoMesFechado }),
+    [contas, ajustes, depara, mensal, parametros, ultimoMesFechado]
+  );
 
-    const mes = (m: number) => mensal.find((x) => x.mes === m);
-    const linhaMensal = (id: keyof Omit<Mensal, 'ano' | 'mes'>) => MESES.map((_, i) => mes(i + 1)?.[id] ?? 0);
-    const fat = linhaMensal('faturamento');
-    const receb = linhaMensal('recebimento');
-
-    // meses da média: fechados e com despesa
-    const fechados = MESES.map((_, i) => i).filter((i) => i < Math.max(ultimoMesFechado, 1) && Math.abs(total[i]) > 0.5);
-    const nMeses = fechados.length || 1;
-    const somaMeses = (v: number[]) => fechados.reduce((s, i) => s + v[i], 0);
-    const mesesReceb = fechados.filter((i) => receb[i] > 0);
-    const mediaReceb = mesesReceb.length ? mesesReceb.reduce((s, i) => s + receb[i], 0) / mesesReceb.length : 0;
-    const fatFechado = somaMeses(fat);
-
-    const semRubrica = Array.from(contasPorRub.get('')?.values() ?? []).sort((a, b) => soma(b.v) - soma(a.v));
-    return { contasPorRub, porRub, ajPorRub, total, fat, receb, linhaMensal, fechados, nMeses, somaMeses, mediaReceb, fatFechado, semRubrica };
-  }, [contas, ajustes, depara, mensal, ultimoMesFechado]);
-
-  const { porRub, total, fat, receb, fechados, nMeses, somaMeses, mediaReceb, fatFechado, semRubrica } = calc;
-  const param = (cod: string) => parametros[cod] ?? RUBRICAS.find((r) => r.cod === cod)?.parametro ?? 0;
-  const ultimoComDado = Math.max(...MESES.map((_, i) => (Math.abs(total[i]) > 0.5 || fat[i] ? i : -1)));
-  const colunas = MESES.map((_, i) => i).filter((i) => i <= Math.max(ultimoComDado, 0));
+  const { porRub, total, fat, receb, fechados, nMeses, somaMeses, mediaReceb, fatFechado, semRubrica, param, colunas } = calc;
 
   const despAno = soma(total);
   const fatAno = soma(fat);
@@ -147,6 +88,12 @@ export function PainelGerencial({
           </Link>
         ))}
         <span className="flex-1" />
+        <a
+          href={`/api/relatorio-gerencial/excel?ano=${ano}`}
+          className="rounded-xl border border-emerald-600 bg-emerald-50 px-4 py-2 text-body font-bold text-emerald-700 transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          Baixar Excel
+        </a>
         <button type="button" className="rounded-xl border border-primary px-4 py-2 text-body font-bold text-primary" onClick={() => setEditarMes(Math.max(ultimoMesFechado, 1))}>
           Lançar faturamento / recebimento
         </button>
