@@ -3,7 +3,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { SidebarFooter } from '@/components/layout/SidebarFooter';
 import { FundoTech } from '@/components/layout/FundoTech';
-import { IconAlert, IconBank, IconCart, IconChart, IconCreditCard, IconDocument, IconPresentation, IconReceipt, IconUsers, IconWallet } from '@/components/ui/Icons';
+import { IconAlert, IconBank, IconCart, IconChart, IconCreditCard, IconDocument, IconPresentation, IconReceipt, IconUserOff, IconUsers, IconWallet } from '@/components/ui/Icons';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { representante } = await requireRepresentante('admin');
@@ -25,6 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ...(acesso.fidcCarteira ? [{ href: '/admin/fidc-carteira', label: 'Carteira FIDC', icon: <IconWallet /> }] : []),
     ...(acesso.inadimplencia ? [{ href: '/admin/inadimplencia', label: 'Inadimplência', icon: <IconAlert /> }] : []),
     ...(acesso.relatorioGerencial ? [{ href: '/admin/relatorio-gerencial', label: 'Relatório Gerencial', icon: <IconPresentation /> }] : []),
+    ...(acesso.naoAntecipados ? [{ href: '/admin/clientes-nao-antecipados', label: 'Clientes não antecipados', icon: <IconUserOff /> }] : []),
     ...(representante.super_admin ? [{ href: '/admin/usuarios', label: 'Usuários', icon: <IconUsers /> }] : []),
   ];
 

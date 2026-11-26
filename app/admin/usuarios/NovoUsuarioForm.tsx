@@ -86,6 +86,10 @@ export function NovoUsuarioForm() {
             <input type="checkbox" name="acesso_relatorio_gerencial" className="h-4 w-4 accent-primary" />
             Relatório Gerencial
           </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm text-on-surface">
+            <input type="checkbox" name="acesso_clientes_nao_antecipados" className="h-4 w-4 accent-primary" />
+            Clientes não antecipados
+          </label>
         </div>
       </div>
       <div className="mt-4">

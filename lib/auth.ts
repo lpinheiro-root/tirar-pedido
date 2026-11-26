@@ -63,6 +63,7 @@ export function acessos(r: Representante) {
     fidcCarteira: Boolean(r.super_admin) || Boolean(r.acesso_fidc_carteira),
     inadimplencia: Boolean(r.super_admin) || Boolean(r.acesso_inadimplencia),
     relatorioGerencial: Boolean(r.super_admin) || Boolean(r.acesso_relatorio_gerencial),
+    naoAntecipados: Boolean(r.super_admin) || Boolean(r.acesso_clientes_nao_antecipados),
   };
 }
 
@@ -78,7 +79,15 @@ export function telaInicial(r: Representante) {
   if (a.fidcMensal) return '/admin/fidc-mensal';
   if (a.fidcCarteira) return '/admin/fidc-carteira';
   if (a.inadimplencia) return '/admin/inadimplencia';
-  return a.relatorioGerencial ? '/admin/relatorio-gerencial' : '/admin/conta';
+  if (a.relatorioGerencial) return '/admin/relatorio-gerencial';
+  return a.naoAntecipados ? '/admin/clientes-nao-antecipados' : '/admin/conta';
+}
+
+/** Clientes não antecipados (CR em aberto de clientes com "Bloqueia antecipação CR" no ORGM). */
+export async function requireNaoAntecipados() {
+  const sessao = await requireRepresentante('admin');
+  if (!acessos(sessao.representante).naoAntecipados) redirect(telaInicial(sessao.representante));
+  return sessao;
 }
 
 /** Relatório Gerencial (despesas por rubrica, do ORGM): super admin ou usuário com acesso liberado. */
