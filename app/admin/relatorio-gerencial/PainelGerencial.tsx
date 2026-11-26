@@ -180,13 +180,13 @@ export function PainelGerencial({
 
       {/* tabela principal */}
       <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="max-h-[calc(100vh-7rem)] overflow-auto">
           <table className="w-full border-collapse text-body-sm">
             <thead>
-              <tr className="bg-primary text-white">
-                <th className="sticky left-0 z-10 min-w-[260px] bg-primary px-3 py-2 text-left">Conta contábil</th>
+              <tr className="bg-primary text-white [&>th]:sticky [&>th]:top-0 [&>th]:z-20 [&>th]:bg-primary">
+                <th className="sticky left-0 !z-30 min-w-[260px] bg-primary px-3 py-2 text-left">Conta contábil</th>
                 {colunas.map((i) => (
-                  <th key={i} className={`px-2 py-2 text-right ${i >= ultimoMesFechado ? 'opacity-70' : ''}`}>
+                  <th key={i} className={`px-2 py-2 text-right ${i >= ultimoMesFechado ? 'text-white/70' : ''}`}>
                     {MESES[i]}/{String(ano).slice(2)}
                   </th>
                 ))}
